@@ -25,6 +25,11 @@ urlpatterns = [
 
     # --- Auth module ---
     path("api/v1/auth/", include("users.urls")),
+    path("api/v1/", include("records.urls")),
+    path("api/v1/", include("visits.urls")),
+    path("api/v1/", include("access.urls")),
+    path("api/v1/", include("audit.urls")),
+    path("api/v1/", include("cards.urls")),
 
      # swagger UI
    path('swagger<format>/', schema_view.without_ui(cache_timeout=0), name='schema-json'),

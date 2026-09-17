@@ -15,6 +15,13 @@ urlpatterns = [
 
     # --- Hospital staff management ---
     path("hospitals/me/staff/", views.create_hospital_staff, name="hospital-staff-create"),
+    path("hospitals/<uuid:hospital_id>/staff/", views.list_hospital_staff, name="hospital-staff-list"),
+    path("staff/<uuid:staff_id>/", views.remove_hospital_staff, name="hospital-staff-remove"),
+
+    # --- Hospital directory / verification ---
+    path("hospitals/", views.hospital_directory, name="hospital-directory"),
+    path("hospitals/<uuid:hospital_id>/", views.hospital_detail, name="hospital-detail"),
+    path("hospitals/<uuid:hospital_id>/verify/", views.verify_hospital, name="hospital-verify"),
 
     # --- Login / token lifecycle ---
     path("login/", views.login_view, name="login"),
