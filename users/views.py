@@ -18,7 +18,8 @@ Every view:
     OpenAPI docs (see urls.py / project_urls_snippet.py for where those
     are served).
 """
-
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.contrib.auth.tokens import default_token_generator
@@ -69,7 +70,137 @@ class RegistrationThrottle(throttling.AnonRateThrottle):
 class LoginThrottle(throttling.AnonRateThrottle):
     scope = "login"
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Patients"],
+    operation_summary="Register a new patient account",
+    operation_description="""
+    Creates a new self-managed patient account.
 
+    This endpoint creates:
+    - A `User` account used for authentication.
+    - A `PatientProfile` containing the patient's medical identity information.
+    - The user is automatically assigned the `patient` user type.
+    - The patient profile is intended to be assigned the `self_managed` account type.
+
+    **Notes for Frontend:**
+    - This is a public registration endpoint.
+    - `email` must be a valid email address.
+    - The email must not already belong to another user.
+    - `date_of_birth` must use the format `YYYY-MM-DD`.
+    - `gender` is required by the current view.
+    - `full_name` is accepted by the endpoint and is used when creating the patient profile.
+    - A successful registration returns the newly created user information.
+    - JWT tokens are NOT returned by this endpoint. The patient must log in separately after registration.
+    - Registration is protected by `RegistrationThrottle`, so repeated registration attempts may be rate-limited.
+
+    **Important Current Implementation Note:**
+    - The current view reads `phone_number` from `data.get("email")` instead of
+      `data.get("phone_number")`.
+    - The current view also reads `blood_type` from `data.get("email")` instead of
+      `data.get("blood_type")`.
+    - These appear to be implementation mistakes and should be corrected in the view.
+    - The intended request structure is documented below.
+
+    **Authentication:** Not required.
+    """,
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=[
+            "email",
+            "password",
+            "phone_number",
+            "full_name",
+            "date_of_birth",
+            "gender",
+        ],
+        properties={
+            "email": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_EMAIL,
+                description="Unique email address used by the patient to log in."
+            ),
+            "password": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_PASSWORD,
+                description="Password for the patient's account."
+            ),
+            "phone_number": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Patient's phone number."
+            ),
+            "full_name": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Patient's full legal or preferred name."
+            ),
+            "date_of_birth": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_DATE,
+                description="Patient's date of birth. Must be provided as YYYY-MM-DD."
+            ),
+            "gender": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Patient's gender."
+            ),
+            "blood_type": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Patient's blood type, for example A+, O-, AB+."
+            ),
+        },
+        example={
+            "email": "john.patient@example.com",
+            "password": "SecurePassword123!",
+            "phone_number": "08012345678",
+            "full_name": "John Patient",
+            "date_of_birth": "1995-06-14",
+            "gender": "male",
+            "blood_type": "O+"
+        }
+    ),
+    responses={
+        201: openapi.Response(
+            description="Patient account created successfully",
+            examples={
+                "application/json": {
+                    "status": True,
+                    "message": "Account created successfully",
+                    "data": {
+                        "id": "550e8400-e29b-41d4-a716-446655440000",
+                        "email": "john.patient@example.com",
+                        "phone_number": "08012345678",
+                        "user_type": "patient",
+                        "profile": {
+                            "id": "a12e8400-e29b-41d4-a716-446655440111",
+                            "full_name": "John Patient",
+                            "date_of_birth": "1995-06-14",
+                            "gender": "male",
+                            "blood_type": "O+",
+                            "account_type": "self_managed",
+                            "created_at": "2026-09-17T12:30:00Z"
+                        }
+                    }
+                }
+            }
+        ),
+        400: openapi.Response(
+            description="Invalid registration data",
+            examples={
+                "application/json": {
+                    "status": False,
+                    "message": "Invalid email format."
+                }
+            }
+        ),
+        429: openapi.Response(
+            description="Too many registration attempts",
+            examples={
+                "application/json": {
+                    "detail": "Request was throttled."
+                }
+            }
+        ),
+    }
+)
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 @throttle_classes([RegistrationThrottle])
@@ -139,7 +270,114 @@ def register_patient(request):
         'data': serializer.data
     }, status=status.HTTP_201_CREATED)
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Patients"],
+    operation_summary="Register a dependent patient",
+    operation_description="""
+    Creates a dependent patient under the currently authenticated patient's account.
 
+    A dependent is a patient profile that is controlled by a guardian rather than
+    having its own login credentials.
+
+    **Notes for Frontend:**
+    - The logged-in user must be a patient.
+    - The authenticated patient's profile becomes the dependent's guardian.
+    - A dependent does NOT require an email address.
+    - A dependent does NOT require a password.
+    - A dependent does NOT receive JWT tokens.
+    - `full_name`, `date_of_birth`, and `gender` are required by the current view.
+    - `date_of_birth` must use `YYYY-MM-DD`.
+    - `blood_type` can be supplied if known.
+    - The returned `data` object contains the created patient profile.
+
+    **Important Current Implementation Note:**
+    - The model requires an `account_type`.
+    - The intended account type for this endpoint is `dependent`.
+    - The current view does not explicitly provide
+      `account_type=PatientProfile.AccountType.DEPENDENT` when creating the profile.
+    - This should be corrected in the view.
+
+    **Authentication:** Required.
+
+    **Required Role:** Patient.
+    """,
+    security=[{"Bearer": []}],
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=["full_name", "date_of_birth", "gender"],
+        properties={
+            "full_name": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Full name of the dependent."
+            ),
+            "date_of_birth": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_DATE,
+                description="Dependent's date of birth in YYYY-MM-DD format."
+            ),
+            "gender": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Dependent's gender."
+            ),
+            "blood_type": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Dependent's blood type, if known."
+            ),
+        },
+        example={
+            "full_name": "Sarah Patient",
+            "date_of_birth": "2018-04-20",
+            "gender": "female",
+            "blood_type": "A+"
+        }
+    ),
+    responses={
+        201: openapi.Response(
+            description="Dependent created successfully",
+            examples={
+                "application/json": {
+                    "status": True,
+                    "message": "Dependent created successfully",
+                    "data": {
+                        "id": "750e8400-e29b-41d4-a716-446655440000",
+                        "full_name": "Sarah Patient",
+                        "date_of_birth": "2018-04-20",
+                        "gender": "female",
+                        "blood_type": "A+",
+                        "account_type": "dependent",
+                        "created_at": "2026-09-17T12:35:00Z"
+                    }
+                }
+            }
+        ),
+        400: openapi.Response(
+            description="Missing or invalid dependent information",
+            examples={
+                "application/json": {
+                    "status": False,
+                    "message": "Date of birth must be provided in form YYYY-MM-DD"
+                }
+            }
+        ),
+        401: openapi.Response(
+            description="Authentication credentials were not provided or token is invalid",
+            examples={
+                "application/json": {
+                    "detail": "Authentication credentials were not provided."
+                }
+            }
+        ),
+        403: openapi.Response(
+            description="Authenticated user is not permitted to register a dependent",
+            examples={
+                "application/json": {
+                    "detail": "You do not have permission to perform this action."
+                }
+            }
+        ),
+    }
+)
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated, IsPatient])
 def register_dependent(request):
@@ -179,6 +417,145 @@ def register_dependent(request):
         'data': serializer.data
     }, status=status.HTTP_201_CREATED)
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Hospitals"],
+    operation_summary="Register a hospital and its first administrator",
+    operation_description="""
+    Registers a new hospital together with the hospital's first administrator account.
+
+    The hospital is intended to be created with verification status `pending`.
+    The administrator receives a normal user account with user type `hospital_staff`
+    and a hospital staff profile with role `admin`.
+
+    **Notes for Frontend:**
+    - This endpoint is publicly accessible.
+    - All fields listed in the request schema are required by the current view.
+    - `admin_email` must be a valid email address.
+    - The administrator email cannot already belong to another user.
+    - The hospital registration number must be unique.
+    - Hospital name, PHERMC number, and CAC number are also checked for duplicates.
+    - The current view requires the administrator password to contain at least 5 characters.
+    - A successful registration does NOT mean the hospital has been verified.
+    - New hospitals start with `verification_status = pending`.
+    - Verification must occur through a separate verification process.
+    - Registration is protected by `RegistrationThrottle`.
+
+    **Important Current Implementation Note:**
+    - The current view creates the hospital using `Hospital(...)` but does not call
+      `hospital.save()` before using it in `HospitalStaffProfile.objects.create(...)`.
+    - The hospital must normally be saved before it can be referenced by the staff profile.
+    - This should be corrected in the implementation.
+
+    **Authentication:** Not required.
+    """,
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=[
+            "hospital_name",
+            "registration_number",
+            "phermc_number",
+            "cac_number",
+            "address",
+            "admin_email",
+            "admin_password",
+            "admin_full_name",
+        ],
+        properties={
+            "hospital_name": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Official name of the hospital."
+            ),
+            "registration_number": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Unique National Health Facility Registry or hospital registration number."
+            ),
+            "phermc_number": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Hospital PHERMC registration/reference number."
+            ),
+            "cac_number": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Hospital Corporate Affairs Commission registration number."
+            ),
+            "address": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Physical address of the hospital."
+            ),
+            "admin_email": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_EMAIL,
+                description="Email address for the hospital's first administrator."
+            ),
+            "admin_password": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_PASSWORD,
+                description="Password for the first hospital administrator."
+            ),
+            "admin_full_name": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Full name of the first hospital administrator."
+            ),
+        },
+        example={
+            "hospital_name": "Central Medical Hospital",
+            "registration_number": "HFR-2026-001245",
+            "phermc_number": "PHERMC-88291",
+            "cac_number": "RC-1948273",
+            "address": "15 Medical Avenue, Lagos",
+            "admin_email": "admin@centralmedical.example",
+            "admin_password": "SecurePassword123!",
+            "admin_full_name": "Dr. James Williams"
+        }
+    ),
+    responses={
+        201: openapi.Response(
+            description="Hospital registered successfully and awaiting verification",
+            examples={
+                "application/json": {
+                    "status": True,
+                    "message": "Hospital created successfully",
+                    "data": {
+                        "id": "850e8400-e29b-41d4-a716-446655440000",
+                        "name": "Central Medical Hospital",
+                        "registration_number": "HFR-2026-001245",
+                        "phermc_number": "PHERMC-88291",
+                        "cac_number": "RC-1948273",
+                        "address": "15 Medical Avenue, Lagos",
+                        "verification_status": "pending",
+                        "created_at": "2026-09-17T12:40:00Z"
+                    }
+                }
+            }
+        ),
+        400: openapi.Response(
+            description="Missing, invalid, or duplicate hospital information",
+            examples={
+                "application/json": {
+                    "status": False,
+                    "message": "All fields are required"
+                }
+            }
+        ),
+        404: openapi.Response(
+            description="Administrator email already exists. The current view returns HTTP 404 for this condition.",
+            examples={
+                "application/json": {
+                    "status": False,
+                    "message": "Email is already in use"
+                }
+            }
+        ),
+        429: openapi.Response(
+            description="Too many registration attempts",
+            examples={
+                "application/json": {
+                    "detail": "Request was throttled."
+                }
+            }
+        ),
+    }
+)
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 @throttle_classes([RegistrationThrottle])
@@ -282,7 +659,124 @@ def register_hospital(request):
         'data': serializer.data
     }, status=status.HTTP_201_CREATED)
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Hospital Staff"],
+    operation_summary="Create a new hospital staff account",
+    operation_description="""
+    Allows an authenticated hospital administrator to create a new staff account
+    under their own hospital.
 
+    The hospital is automatically determined from the authenticated administrator's
+    `staff_profile`. The client therefore does NOT provide a hospital ID.
+
+    **Notes for Frontend:**
+    - Authentication is required.
+    - Only a hospital administrator can access this endpoint.
+    - The current view accepts `doctor` and `nurse` as valid roles.
+    - The current view requires `professional_license_number` for both roles.
+    - The server generates a temporary password automatically.
+    - The temporary password is NOT returned in the API response.
+    - `must_change_password` is set to `True` on the new user.
+    - The temporary password is emailed to the staff member.
+    - The staff member should change the temporary password after logging in.
+    - The staff member is automatically assigned to the administrator's hospital.
+
+    **Important Current Implementation Note:**
+    - The current view returns HTTP 201 even when required fields are missing.
+    - In that case the response contains `status: false`.
+    - Frontend code should therefore inspect the response `status` field as well as
+      the HTTP status until this behavior is corrected.
+    - The supplied serializer allows `professional_license_number` to be optional for
+      nurses, but the current view requires it for every staff member.
+
+    **Authentication:** Required.
+
+    **Required Role:** Hospital Admin.
+    """,
+    security=[{"Bearer": []}],
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=[
+            "email",
+            "full_name",
+            "role",
+            "professional_license_number",
+        ],
+        properties={
+            "email": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_EMAIL,
+                description="Email address of the new staff member."
+            ),
+            "full_name": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Full name of the staff member."
+            ),
+            "role": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                enum=["doctor", "nurse"],
+                description="Staff role. The current view accepts only `doctor` or `nurse`."
+            ),
+            "professional_license_number": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Professional license number. Required by the current view."
+            ),
+        },
+        example={
+            "email": "doctor@centralmedical.example",
+            "full_name": "Dr. Sarah Johnson",
+            "role": "doctor",
+            "professional_license_number": "MDCN-123456"
+        }
+    ),
+    responses={
+        201: openapi.Response(
+            description="Staff created successfully. Note: the current view also uses HTTP 201 when required fields are missing.",
+            examples={
+                "application/json": {
+                    "status": True,
+                    "message": "Staff created successfully",
+                    "data": {
+                        "id": "950e8400-e29b-41d4-a716-446655440000",
+                        "full_name": "Dr. Sarah Johnson",
+                        "role": "doctor",
+                        "professional_license_number": "MDCN-123456",
+                        "hospital": "850e8400-e29b-41d4-a716-446655440000",
+                        "hospital_name": "Central Medical Hospital",
+                        "hospital_verification_status": "pending",
+                        "created_at": "2026-09-17T12:45:00Z"
+                    }
+                }
+            }
+        ),
+        400: openapi.Response(
+            description="Invalid email or invalid staff role",
+            examples={
+                "application/json": {
+                    "status": False,
+                    "message": "Role must either be 'doctor' or 'nurse'"
+                }
+            }
+        ),
+        401: openapi.Response(
+            description="Authentication required",
+            examples={
+                "application/json": {
+                    "detail": "Authentication credentials were not provided."
+                }
+            }
+        ),
+        403: openapi.Response(
+            description="Authenticated user is not a hospital administrator",
+            examples={
+                "application/json": {
+                    "detail": "You do not have permission to perform this action."
+                }
+            }
+        ),
+    }
+)
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated, IsHospitalAdmin])
 def create_hospital_staff(request):
@@ -494,111 +988,10 @@ def me_view(request):
         # correct here, not a bug: there is nothing else safe to return.
         profile_data = {}
 
-    return success_response(
-        {
-            "user_type": user.user_type,
-            "email": user.email,
-            "must_change_password": user.must_change_password,
-            "profile": profile_data,
-        },
-        message=PROFILE["FETCHED"],
-    )
+    return Response({
+        'status': True,
+        'message': 'Profile retrieved successfully',
+        'data': profile_data
+    }, status=status.HTTP_200_OK)
 
 
-# ---------------------------------------------------------------------------
-# PASSWORD MANAGEMENT
-# ---------------------------------------------------------------------------
-
-@extend_schema(
-    tags=["Auth — Password"],
-    summary="Change your password",
-    description=(
-        "Works both for a voluntary change and the forced first-login "
-        "change (must_change_password=True). This is the ONE endpoint that "
-        "must stay reachable even when must_change_password is True."
-    ),
-    request=ChangePasswordSerializer,
-)
-@api_view(["POST"])
-@permission_classes([permissions.IsAuthenticated])
-def change_password_view(request):
-    serializer = ChangePasswordSerializer(data=request.data, context={"request": request})
-    serializer.is_valid(raise_exception=True)
-    serializer.save()
-    log_event("password_changed", user_id=str(request.user.id), email=request.user.email)
-    return success_response(message=PASSWORD["CHANGED"])
-
-
-@extend_schema(
-    tags=["Auth — Password"],
-    summary="Request a password reset email",
-    description=(
-        "Always returns 200 with the same message whether or not the email "
-        "exists, to avoid leaking which emails are registered."
-    ),
-)
-@api_view(["POST"])
-@permission_classes([permissions.AllowAny])
-@throttle_classes([LoginThrottle])
-def request_password_reset_view(request):
-    email = request.data.get("email", "")
-    user = User.objects.filter(email__iexact=email).first()
-
-    if user:
-        uid = urlsafe_base64_encode(force_bytes(user.pk))
-        token = default_token_generator.make_token(user)
-        # --- TODO for whoever wires up notifications ---
-        # reset_link = f"{FRONTEND_URL}/reset-password/{uid}/{token}/"
-        # send_password_reset_email(to=user.email, link=reset_link)
-        log_event("password_reset_requested", user_id=str(user.id), email=user.email)
-
-    # No `else` branch that logs/behaves differently — that asymmetry is
-    # exactly what would let an attacker tell registered emails apart from
-    # unregistered ones by timing or side effects.
-    return success_response(message=PASSWORD["RESET_REQUESTED"])
-
-
-@extend_schema(
-    tags=["Auth — Password"],
-    summary="Complete a password reset",
-)
-@api_view(["POST"])
-@permission_classes([permissions.AllowAny])
-def confirm_password_reset_view(request):
-    uid = request.data.get("uid", "")
-    token = request.data.get("token", "")
-    new_password = request.data.get("new_password", "")
-
-    try:
-        user_id = force_str(urlsafe_base64_decode(uid))
-        user = User.objects.get(pk=user_id)
-    except (User.DoesNotExist, ValueError, TypeError, OverflowError):
-        return error_response(
-            PASSWORD["RESET_LINK_INVALID"],
-            status_code=status.HTTP_400_BAD_REQUEST,
-            code="INVALID_RESET_LINK",
-        )
-
-    if not default_token_generator.check_token(user, token):
-        return error_response(
-            PASSWORD["RESET_LINK_EXPIRED"],
-            status_code=status.HTTP_400_BAD_REQUEST,
-            code="EXPIRED_RESET_LINK",
-        )
-
-    try:
-        validate_password(new_password, user=user)
-    except Exception as exc:
-        return error_response(
-            GENERIC["VALIDATION_ERROR"],
-            errors={"new_password": list(exc.messages)},
-            status_code=status.HTTP_400_BAD_REQUEST,
-            code="VALIDATION_ERROR",
-        )
-
-    user.set_password(new_password)
-    user.must_change_password = False
-    user.save(update_fields=["password", "must_change_password"])
-    log_event("password_reset_completed", user_id=str(user.id), email=user.email)
-
-    return success_response(message=PASSWORD["RESET_SUCCESS"])

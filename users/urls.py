@@ -24,12 +24,4 @@ urlpatterns = [
     # --- Profile ---
     path("me/", views.me_view, name="me"),
 
-    # --- Password management ---
-    path("change-password/", views.change_password_view, name="change-password"),
-    path("password-reset/", views.request_password_reset_view, name="password-reset"),
-    path(
-        "password-reset/confirm/",
-        views.confirm_password_reset_view,
-        name="password-reset-confirm",
-    ),
 ]

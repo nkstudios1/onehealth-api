@@ -267,7 +267,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'phone_number', 'user_type', 'profile']
+        fields = ['id', 'email', 'phone_number', 'user_type', 'profile', 'must_change_password']
 
 class HospitalStaffProfileSerializer(serializers.ModelSerializer):
     hospital_name = serializers.CharField(source="hospital.name", read_only=True)
