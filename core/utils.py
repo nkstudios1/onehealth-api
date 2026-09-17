@@ -15,6 +15,8 @@ def generate_temporary_password():
         length=12, allowed_chars="ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%"
     )
 
+    return temp_password
+
 def is_valid_email(email):
     
     # Regular expression for a valid email

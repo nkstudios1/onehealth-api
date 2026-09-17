@@ -210,10 +210,10 @@ def register_patient(request):
 
     email = data.get('email')
     password = data.get('password')
-    phone_number = data.get('email')
+    phone_number = data.get('phone_number')
     date_of_birth = data.get('date_of_birth')
     gender = data.get('gender')
-    blood_type = data.get('email')
+    blood_type = data.get('blood_type')
     full_name = data.get('full_name')
 
     if not is_correct_format(date_of_birth):
@@ -637,6 +637,8 @@ def register_hospital(request):
         verification_status=Hospital.VerificationStatus.PENDING,
     )
 
+    hospital.save()
+
     # create an admin user for the hospital
     admin_user = User.objects.create_user(
         email = admin_email,
@@ -795,7 +797,7 @@ def create_hospital_staff(request):
         return Response({
             'status': False,
             'message': 'All fields are required'
-        }, status=status.HTTP_201_CREATED)
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     if not is_valid_email(email):
         return Response({
@@ -875,12 +877,6 @@ def login_view(request):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         user = authenticate(username=email, password=password)
-
-        return Response({
-            'status': False,
-            'message': 'Invalid credentials provided'
-        }, status=status.HTTP_400_BAD_REQUEST)
-
     else:
         # else identifier is phone number
         if not identifier.isdigit():
