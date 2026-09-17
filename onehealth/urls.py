@@ -1,12 +1,24 @@
-# ============================================================================
-# PASTE / MERGE THESE INTO YOUR PROJECT'S ROOT urls.py
-# (the urls.py next to settings.py, not users/urls.py)
-# This file is NOT imported automatically — it's a reference to copy from.
-# ============================================================================
-
 from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
+from rest_framework import permissions
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+from django.conf import settings
+
+schema_view = get_schema_view(
+   openapi.Info(
+      title="One health API",
+      default_version='v1',
+      description="Below, you will find all endpoints and documentation to each of these endpoints",
+      contact=openapi.Contact(email="adesolaayodeji53@gmail.com"),
+      license=openapi.License(name="BSD License"),
+   ),
+   public=True,
+   permission_classes=(permissions.AllowAny,),
+   url=settings.SWAGGER_DOCS_BASE_URL,
+   authentication_classes=[],  # optional
+)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -14,14 +26,8 @@ urlpatterns = [
     # --- Auth module ---
     path("api/v1/auth/", include("users.urls")),
 
-    # --- API docs ---
-    # /api/schema/             -> raw OpenAPI schema (JSON/YAML) — what tools like
-    #                             Postman or a frontend codegen step would import
-    # /api/schema/swagger-ui/  -> interactive Swagger UI — click "Authorize", paste
-    #                             a Bearer token, and try any endpoint from the browser
-    # /api/schema/redoc/       -> a cleaner read-only reference view, nicer to link
-    #                             teammates or reviewers to than Swagger UI
-    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
-    path("api/schema/swagger-ui/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
-    path("api/schema/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
+     # swagger UI
+   path('swagger<format>/', schema_view.without_ui(cache_timeout=0), name='schema-json'),
+   path('', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+   path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 ]

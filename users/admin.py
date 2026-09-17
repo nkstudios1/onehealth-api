@@ -1,11 +1,11 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import CustomUser, Hospital, HospitalStaffProfile, PatientProfile
+from .models import User, Hospital, HospitalStaffProfile, PatientProfile
 
 
-@admin.register(CustomUser)
-class CustomUserAdmin(DjangoUserAdmin):
+@admin.register(User)
+class UserAdmin(DjangoUserAdmin):
     """
     Extends Django's built-in UserAdmin so the admin site still gets its
     usual nice password-change widgets etc., just pointed at our fields

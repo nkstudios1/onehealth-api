@@ -25,18 +25,23 @@ from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.password_validation import validate_password
 from drf_spectacular.utils import OpenApiExample, extend_schema
 from rest_framework import permissions, status, throttling
+from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
-from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.core.mail import EmailMessage
 
 from core.audit import log_event
 from core.messages import AUTH, GENERIC, PASSWORD, PROFILE, REGISTRATION
 from core.responses import error_response, success_response
+from core.utils import is_correct_format, generate_temporary_password, is_valid_email
 
-from .models import CustomUser, HospitalStaffProfile, PatientProfile
+from .models import User, Hospital, HospitalStaffProfile, PatientProfile
 from .permissions import IsHospitalAdmin, IsPatient
 from .serializers import (
+    UserSerializer,
+    HospitalSerializer,
     ChangePasswordSerializer,
     CustomTokenObtainPairSerializer,
     DependentRegistrationSerializer,
@@ -46,7 +51,8 @@ from .serializers import (
     PatientProfileSerializer,
     PatientRegistrationSerializer,
 )
-
+from django.conf import settings
+from django.contrib.auth import authenticate
 
 # ---------------------------------------------------------------------------
 # THROTTLES
@@ -64,283 +70,424 @@ class LoginThrottle(throttling.AnonRateThrottle):
     scope = "login"
 
 
-# ---------------------------------------------------------------------------
-# REGISTRATION
-# ---------------------------------------------------------------------------
-
-@extend_schema(
-    tags=["Auth — Registration"],
-    summary="Register a new adult patient",
-    description=(
-        "Public, self-service signup for an adult patient. Creates both "
-        "the login account and the medical-identity profile in one call."
-    ),
-    request=PatientRegistrationSerializer,
-    responses={201: PatientProfileSerializer},
-    examples=[
-        OpenApiExample(
-            "Success",
-            value={
-                "success": True,
-                "message": REGISTRATION["PATIENT_REGISTERED"],
-                "data": {
-                    "id": "b3b3c3d3-...",
-                    "full_name": "Ada Lovelace",
-                    "date_of_birth": "1990-01-01",
-                    "gender": "female",
-                    "blood_type": "O+",
-                    "account_type": "self_managed",
-                    "created_at": "2026-09-17T10:00:00Z",
-                },
-            },
-            response_only=True,
-            status_codes=["201"],
-        ),
-    ],
-)
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 @throttle_classes([RegistrationThrottle])
 def register_patient(request):
-    serializer = PatientRegistrationSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    profile = serializer.save()
-    log_event("patient_registered", user_id=str(profile.user_id), email=profile.user.email)
-    return success_response(
-        PatientProfileSerializer(profile).data,
-        message=REGISTRATION["PATIENT_REGISTERED"],
-        status_code=status.HTTP_201_CREATED,
+
+    data = request.data
+
+    email = data.get('email')
+    password = data.get('password')
+    phone_number = data.get('email')
+    date_of_birth = data.get('date_of_birth')
+    gender = data.get('gender')
+    blood_type = data.get('email')
+    full_name = data.get('full_name')
+
+    if not is_correct_format(date_of_birth):
+        return Response({
+            'status': False,
+            'message': 'Date of birth must be provided in form YYYY-MM-DD'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    if not (email and password and phone_number and date_of_birth and gender):
+        return Response({
+            'status': False,
+            'message': 'Email, password, phone_number, date of birth and gender are required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    if not is_valid_email(email):
+        return Response({
+            "status": False,
+            "message": "Invalid email format."
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    if User.objects.filter(email=email).exists():
+        return Response({
+            'status': False,
+            "message": "Email is already in use"
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    if User.objects.filter(phone_number=phone_number).exists():
+        return Response({
+            'status': False,
+            "message": "Email is already in use"
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    user = User.objects.create_user(
+        email = email,
+        password = password,
+        date_of_birth = date_of_birth,
+        user_type = User.UserType.PATIENT,
+        gender = gender
     )
 
+    # create patient profile
+    PatientProfile.objects.create(
+        user = user,
+        full_name = full_name,
+        blood_type = blood_type,
+        account_type = PatientProfile.AccountType.SELF_MANAGED,
 
-@extend_schema(
-    tags=["Auth — Registration"],
-    summary="Register a dependent (child) under the logged-in patient",
-    description=(
-        "Must be called by an already-logged-in patient. Registers a child "
-        "with no login of their own — access is entirely through the "
-        "guardian's account."
-    ),
-    request=DependentRegistrationSerializer,
-    responses={201: PatientProfileSerializer},
-)
+    )
+
+    serializer = UserSerializer(user)
+    return Response({
+        'status': True,
+        'message': 'Account created successfully',
+        'data': serializer.data
+    }, status=status.HTTP_201_CREATED)
+
+
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated, IsPatient])
 def register_dependent(request):
     guardian_profile = request.user.patient_profile
-    serializer = DependentRegistrationSerializer(
-        data=request.data, context={"guardian_profile": guardian_profile}
-    )
-    serializer.is_valid(raise_exception=True)
-    dependent = serializer.save()
-    log_event(
-        "dependent_registered",
-        user_id=str(request.user.id),
-        email=request.user.email,
-        dependent_id=str(dependent.id),
-    )
-    return success_response(
-        PatientProfileSerializer(dependent).data,
-        message=REGISTRATION["DEPENDENT_REGISTERED"],
-        status_code=status.HTTP_201_CREATED,
+
+    data = request.data
+
+    full_name = data.get('full_name')
+    date_of_birth = data.get('date_of_birth')
+    gender = data.get('gender')
+    blood_type = data.get('blood_type', None)
+
+    if not (full_name and date_of_birth and gender):
+        return Response({
+            'status': False,
+            'message': 'Full name, date of birth, and gender'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    if not is_correct_format(date_of_birth):
+        return Response({
+            'status': False,
+            'message': 'Date of birth must be provided in form YYYY-MM-DD'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    patient = PatientProfile.objects.create(
+        full_name = full_name,
+        date_of_birth = date_of_birth,
+        gender = gender,
+        blood_type = blood_type,
+        guardian = guardian_profile
     )
 
+    serializer = PatientProfileSerializer(patient)
+    return Response({
+        'status': True,
+        'message': 'Dependent created successfully',
+        'data': serializer.data
+    }, status=status.HTTP_201_CREATED)
 
-@extend_schema(
-    tags=["Auth — Registration"],
-    summary="Register a new hospital and its first admin account",
-    description=(
-        "Public. The hospital starts in `pending` verification status — "
-        "this endpoint grants NO patient-data access on its own. See "
-        "IsFromVerifiedHospital, applied on data-access endpoints elsewhere "
-        "in the project."
-    ),
-    request=HospitalRegistrationSerializer,
-    examples=[
-        OpenApiExample(
-            "Success",
-            value={
-                "success": True,
-                "message": REGISTRATION["HOSPITAL_REGISTERED"],
-                "data": {
-                    "hospital_id": "b3b3c3d3-...",
-                    "verification_status": "pending",
-                },
-            },
-            response_only=True,
-            status_codes=["201"],
-        ),
-    ],
-)
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 @throttle_classes([RegistrationThrottle])
 def register_hospital(request):
-    serializer = HospitalRegistrationSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    hospital = serializer.save()
-    log_event("hospital_registered", hospital_id=str(hospital.id))
-    return success_response(
-        {
-            "hospital_id": str(hospital.id),
-            "verification_status": hospital.verification_status,
-        },
-        message=REGISTRATION["HOSPITAL_REGISTERED"],
-        status_code=status.HTTP_201_CREATED,
+
+    data = request.data
+
+    hospital_name = data.get('hospital_name')
+
+    # unique 
+    registration_number = data.get('registration_number')
+    phermc_number = data.get('phermc_number')
+    cac_number = data.get('cac_number')
+
+    address = data.get('address')
+    admin_email = data.get('admin_email')
+    admin_password = data.get('admin_password')
+    admin_full_name = data.get('admin_full_name')
+
+    if not (
+        hospital_name and registration_number and phermc_number 
+        and cac_number and address and admin_email and admin_password 
+        and admin_full_name
+    ):
+        return Response({
+            'status': False,
+            'message': 'All fields are required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    if not is_valid_email(admin_email):
+        return Response({
+            "status": False,
+            "message": "Invalid email format."
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    if len(admin_password) < 5:
+        return Response({
+            'status': False,
+            'message': 'Password must be at least  characters'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    if User.objects.filter(email=admin_email).exists():
+        return Response({
+            'status': False,
+            'message': 'Email is already in use'
+        }, status=status.HTTP_404_NOT_FOUND)    
+
+    if Hospital.objects.filter(name=hospital_name).exists():
+        return Response({
+            'status': False,
+            'message': 'Registration number already in use'
+        }, status=status.HTTP_400_BAD_REQUEST) 
+
+    if Hospital.objects.filter(registration_number=registration_number).exists():
+        return Response({
+            'status': False,
+            'message': 'Registration number already in use'
+        }, status=status.HTTP_400_BAD_REQUEST) 
+
+    if Hospital.objects.filter(phermc_number=phermc_number).exists():
+        return Response({
+            'status': False,
+            'message': 'Registration number already in use'
+        }, status=status.HTTP_400_BAD_REQUEST) 
+
+    if Hospital.objects.filter(cac_number=cac_number).exists():
+        return Response({
+            'status': False,
+            'message': 'CAC number already in use'
+        }, status=status.HTTP_400_BAD_REQUEST) 
+
+    # create hospital
+    hospital = Hospital(
+        name = hospital_name,
+        registration_number = registration_number,
+        phermc_number = phermc_number,
+        cac_number = cac_number,
+        address = address,
+        verification_status=Hospital.VerificationStatus.PENDING,
     )
 
+    # create an admin user for the hospital
+    admin_user = User.objects.create_user(
+        email = admin_email,
+        password = admin_password,
+        user_type=User.UserType.HOSPITAL_STAFF,
+    )
 
-@extend_schema(
-    tags=["Auth — Registration"],
-    summary="Add a staff member to your hospital",
-    description=(
-        "Hospital-admin only. Creates a staff account with a system-generated "
-        "temporary password — the account is forced to change it on first "
-        "login. The temporary password is NEVER included in this response; "
-        "it is handed off to the notification service only."
-    ),
-    request=HospitalStaffCreateSerializer,
-    responses={201: HospitalStaffProfileSerializer},
-)
+    # create a profile for the hospital
+    HospitalStaffProfile.objects.create(
+        user=admin_user,
+        hospital=hospital,
+        full_name = admin_full_name,
+        role = HospitalStaffProfile.Role.ADMIN,
+    )
+
+    serializer = HospitalSerializer(hospital)
+    return Response({
+        'status': True,
+        'message': 'Hospital created successfully',
+        'data': serializer.data
+    }, status=status.HTTP_201_CREATED)
+
+
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated, IsHospitalAdmin])
 def create_hospital_staff(request):
+
     hospital = request.user.staff_profile.hospital
-    serializer = HospitalStaffCreateSerializer(data=request.data, context={"hospital": hospital})
-    serializer.is_valid(raise_exception=True)
-    staff_profile = serializer.save()
 
-    # --- TODO for whoever wires up notifications ---
-    # send_temp_password_email(
-    #     to=staff_profile.user.email,
-    #     temp_password=staff_profile._temp_password,
-    # )
-    # Never log staff_profile._temp_password, and never let it reach the
-    # HTTP response below — HospitalStaffProfileSerializer doesn't expose
-    # it, which is what actually enforces this; the line here is a
-    # reminder for whoever edits that serializer later.
+    data = request.data
+    email = data.get('email')
+    full_name = data.get('full_name')
+    role = data.get('role')
+    professional_license_number = data.get('professional_license_number')
 
-    log_event(
-        "staff_created",
-        user_id=str(staff_profile.user_id),
-        email=staff_profile.user.email,
-        hospital_id=str(hospital.id),
-        role=staff_profile.role,
-        created_by=str(request.user.id),
+    if not (
+        email and full_name and role and professional_license_number
+    ):
+        return Response({
+            'status': False,
+            'message': 'All fields are required'
+        }, status=status.HTTP_201_CREATED)
+
+    if not is_valid_email(email):
+        return Response({
+            "status": False,
+            "message": "Invalid email format."
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    if not (
+        role == HospitalStaffProfile.Role.DOCTOR or
+        role == HospitalStaffProfile.Role.NURSE 
+    ):
+        return Response({
+            'status': False,
+            'message': "Role must either be 'doctor' or 'nurse'"
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    temp_password = generate_temporary_password()
+
+    # create user profile
+    user = User.objects.create_user(
+        email = email,
+        password = temp_password,
+        user_type = User.UserType.HOSPITAL_STAFF,
+        must_change_password = True,
     )
-    return success_response(
-        HospitalStaffProfileSerializer(staff_profile).data,
-        message=REGISTRATION["STAFF_CREATED"],
-        status_code=status.HTTP_201_CREATED,
+
+    # create staff profile for user
+    staff_profile = HospitalStaffProfile.objects.create(
+        user = user,
+        hospital = hospital,
+        full_name= full_name,
+        role = role,
+        professional_license_number = professional_license_number,
     )
+    
+    # email the temporary password to the user
+    email_message = EmailMessage(
+        'Temporary Staff Password',
+        f'Your staff account has been created under hospital {hospital.name} and you temporary password is:\n\n{temp_password}\n\nMake sure to change this password later on',
+        settings.EMAIL_HOST_USER,
+        [email]
+    )
+    email_message.fail_silently = True
+    email_message.send()   
+
+    serializer = HospitalStaffProfileSerializer(staff_profile)
+    return Response({
+        'status': True,
+        'message': 'Staff created successfully',
+        'data': serializer.data
+    }, status=status.HTTP_201_CREATED)
 
 
 # ---------------------------------------------------------------------------
 # LOGIN / LOGOUT
 # ---------------------------------------------------------------------------
 
-@extend_schema(
-    tags=["Auth — Session"],
-    summary="Log in",
-    description=(
-        "Returns access + refresh JWTs with custom claims (user_type, and "
-        "hospital context for staff) baked in, so the frontend can route "
-        "users without an extra call. On failure, the message is "
-        "deliberately generic (\"incorrect email or password\") — it never "
-        "confirms whether the email exists, to prevent account enumeration."
-    ),
-    request=CustomTokenObtainPairSerializer,
-    examples=[
-        OpenApiExample(
-            "Success",
-            value={
-                "success": True,
-                "message": AUTH["LOGIN_SUCCESS"],
-                "data": {"access": "<jwt>", "refresh": "<jwt>"},
-            },
-            response_only=True,
-            status_codes=["200"],
-        ),
-    ],
-)
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 @throttle_classes([LoginThrottle])
 def login_view(request):
-    # LoginThrottle here rate-limits repeated attempts from one IP. For
-    # real production hardening, ALSO add per-account lockout after N
-    # failed attempts (e.g. django-axes) — not included in this module,
-    # flagged as a follow-up in the README.
-    serializer = CustomTokenObtainPairSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    log_event("login_success", email=request.data.get("email", ""))
-    return success_response(serializer.validated_data, message=AUTH["LOGIN_SUCCESS"])
+
+    data = request.data
+    identifier = data.get('identifier')
+    password = data.get('password')
+
+    user = None
+
+    # identifier is email
+    if '@' in identifier:
+        email = email.strip().lower()
+        
+        if not is_valid_email(email):
+            return Response({
+                "status": False,
+                "message": "Invalid email format."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        user = authenticate(username=email, password=password)
+
+        return Response({
+            'status': False,
+            'message': 'Invalid credentials provided'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    else:
+        # else identifier is phone number
+        if not identifier.isdigit():
+            return Response({
+                'status': False,
+                'message': 'You must enter either a phone number or valid email address'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # make sure user enters correct length of phone number
+        if len(identifier) != 11:
+            return Response({
+                'status': False,
+                'message': 'Phone numbers must be 11 digits long'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # attempt to authenticate the user with phone number
+    
+        _user = User.objects.filter(phone_number=identifier).first()
+        if _user and _user.check_password(password):
+            user = _user
+
+    if user is not None:        
+        serializer = UserSerializer(user)
+        return Response({
+            'status': True,
+            'message': 'Login successful',
+            'data': {
+                'user': serializer.data,
+                'tokens': user.auth_tokens()
+            }
+        })
+
+    return Response({
+        'status': False,
+        'message': 'Invalid credentials provided'
+    }, status=status.HTTP_400_BAD_REQUEST)
+   
 
 
-@extend_schema(
-    tags=["Auth — Session"],
-    summary="Refresh an access token",
-    request=TokenRefreshSerializer,
-)
+
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def refresh_token_view(request):
     serializer = TokenRefreshSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    return success_response(serializer.validated_data, message=AUTH["TOKEN_REFRESHED"])
+
+    try:
+        serializer.is_valid(raise_exception=True)
+        return Response({
+            "status": True,
+            "message": "Token refreshed successfully",
+            "data": serializer.validated_data
+        }, status=status.HTTP_200_OK)
+
+    except (TokenError, InvalidToken):
+        return Response({
+            "status": False,
+            "message": "Token is invalid or has expired"
+        }, status=status.HTTP_401_UNAUTHORIZED)
+
+    except Exception:
+        return Response({
+            "status": False,
+            "message": "An unexpected error occurred"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@extend_schema(
-    tags=["Auth — Session"],
-    summary="Log out",
-    description="Blacklists the given refresh token so it can never be used again, even before it expires.",
-)
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
 def logout_view(request):
-    refresh_token = request.data.get("refresh")
-    if not refresh_token:
-        return error_response(
-            AUTH["LOGOUT_MISSING_TOKEN"],
-            errors={"refresh": ["This field is required."]},
-            status_code=status.HTTP_400_BAD_REQUEST,
-            code="VALIDATION_ERROR",
-        )
     try:
+        refresh_token = request.data.get("refresh")
+        if refresh_token is None:
+            return Response({
+                "error": "Refresh token is required."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Blacklist the refresh token to prevent further use
         token = RefreshToken(refresh_token)
         token.blacklist()
-    except TokenError:
-        # Deliberately vague — don't tell the caller WHY a token failed to
-        # blacklist (could leak whether a token is valid/expired/forged).
-        return error_response(
-            AUTH["LOGOUT_INVALID_TOKEN"],
-            status_code=status.HTTP_400_BAD_REQUEST,
-            code="INVALID_TOKEN",
-        )
-    log_event("logout_success", user_id=str(request.user.id), email=request.user.email)
-    return success_response(message=AUTH["LOGOUT_SUCCESS"], status_code=status.HTTP_205_RESET_CONTENT)
-
+        
+        return Response({
+            "status": True,
+            "message": "Successfully logged out."
+            }, status=status.HTTP_204_NO_CONTENT)
+    except Exception as e:
+        return Response({
+            "status": False,
+            "error": str(e)
+        }, status=status.HTTP_400_BAD_REQUEST)
 
 # ---------------------------------------------------------------------------
 # "ME" — profile retrieval, works for either user type
 # ---------------------------------------------------------------------------
 
-@extend_schema(
-    tags=["Auth — Profile"],
-    summary="Get the logged-in user's own profile",
-    description=(
-        "Returns the right profile shape depending on whether the caller is "
-        "a patient or hospital staff — the frontend doesn't need to know "
-        "which in advance, just call this after login."
-    ),
-)
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def me_view(request):
     user = request.user
-    if user.user_type == CustomUser.UserType.PATIENT:
+    if user.user_type == User.UserType.PATIENT:
         profile_data = PatientProfileSerializer(user.patient_profile).data
-    elif user.user_type == CustomUser.UserType.HOSPITAL_STAFF:
+    elif user.user_type == User.UserType.HOSPITAL_STAFF:
         profile_data = HospitalStaffProfileSerializer(user.staff_profile).data
     else:
         # Platform admins have no patient/staff profile — an empty dict is
@@ -395,7 +542,7 @@ def change_password_view(request):
 @throttle_classes([LoginThrottle])
 def request_password_reset_view(request):
     email = request.data.get("email", "")
-    user = CustomUser.objects.filter(email__iexact=email).first()
+    user = User.objects.filter(email__iexact=email).first()
 
     if user:
         uid = urlsafe_base64_encode(force_bytes(user.pk))
@@ -424,8 +571,8 @@ def confirm_password_reset_view(request):
 
     try:
         user_id = force_str(urlsafe_base64_decode(uid))
-        user = CustomUser.objects.get(pk=user_id)
-    except (CustomUser.DoesNotExist, ValueError, TypeError, OverflowError):
+        user = User.objects.get(pk=user_id)
+    except (User.DoesNotExist, ValueError, TypeError, OverflowError):
         return error_response(
             PASSWORD["RESET_LINK_INVALID"],
             status_code=status.HTTP_400_BAD_REQUEST,

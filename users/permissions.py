@@ -1,6 +1,6 @@
 from rest_framework.permissions import BasePermission
 
-from .models import CustomUser, Hospital, HospitalStaffProfile
+from .models import User, Hospital, HospitalStaffProfile
 
 
 class IsPatient(BasePermission):
@@ -12,7 +12,7 @@ class IsPatient(BasePermission):
         return bool(
             request.user
             and request.user.is_authenticated
-            and request.user.user_type == CustomUser.UserType.PATIENT
+            and request.user.user_type == User.UserType.PATIENT
         )
 
 
@@ -25,7 +25,7 @@ class IsHospitalStaff(BasePermission):
         return bool(
             request.user
             and request.user.is_authenticated
-            and request.user.user_type == CustomUser.UserType.HOSPITAL_STAFF
+            and request.user.user_type == User.UserType.HOSPITAL_STAFF
         )
 
 

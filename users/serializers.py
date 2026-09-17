@@ -3,7 +3,7 @@ from django.utils.crypto import get_random_string
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import CustomUser, Hospital, HospitalStaffProfile, PatientProfile
+from .models import User, Hospital, HospitalStaffProfile, PatientProfile
 
 
 # ---------------------------------------------------------------------------
@@ -13,7 +13,7 @@ from .models import CustomUser, Hospital, HospitalStaffProfile, PatientProfile
 class PatientRegistrationSerializer(serializers.Serializer):
     """
     Public self-registration for an adult patient. Creates BOTH the
-    CustomUser (login) and the PatientProfile (medical identity) in one
+    User (login) and the PatientProfile (medical identity) in one
     atomic call — a patient should never exist as one without the other.
     """
 
@@ -30,22 +30,22 @@ class PatientRegistrationSerializer(serializers.Serializer):
     blood_type = serializers.CharField(required=False, allow_blank=True)
 
     def validate_email(self, value):
-        if CustomUser.objects.filter(email__iexact=value).exists():
+        if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("An account with this email already exists.")
         return value
 
-    def validate_password(self, value):
-        # Uses Django's built-in password validators (configured in
-        # settings.py — min length, not-too-common, not-all-numeric etc.)
-        # rather than us inventing our own weak rules.
-        validate_password(value)
-        return value
+    # def validate_password(self, value):
+    #     # Uses Django's built-in password validators (configured in
+    #     # settings.py — min length, not-too-common, not-all-numeric etc.)
+    #     # rather than us inventing our own weak rules.
+    #     validate_password(value)
+    #     return value
 
     def create(self, validated_data):
-        user = CustomUser.objects.create_user(
+        user = User.objects.create_user(
             email=validated_data["email"],
             password=validated_data["password"],
-            user_type=CustomUser.UserType.PATIENT,
+            user_type=User.UserType.PATIENT,
             phone_number=validated_data.get("phone_number", ""),
         )
         profile = PatientProfile.objects.create(
@@ -113,7 +113,7 @@ class HospitalRegistrationSerializer(serializers.Serializer):
         return value
 
     def validate_admin_email(self, value):
-        if CustomUser.objects.filter(email__iexact=value).exists():
+        if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("An account with this email already exists.")
         return value
 
@@ -130,10 +130,10 @@ class HospitalRegistrationSerializer(serializers.Serializer):
             address=validated_data.get("address", ""),
             verification_status=Hospital.VerificationStatus.PENDING,
         )
-        admin_user = CustomUser.objects.create_user(
+        admin_user = User.objects.create_user(
             email=validated_data["admin_email"],
             password=validated_data["admin_password"],
-            user_type=CustomUser.UserType.HOSPITAL_STAFF,
+            user_type=User.UserType.HOSPITAL_STAFF,
         )
         HospitalStaffProfile.objects.create(
             user=admin_user,
@@ -163,7 +163,7 @@ class HospitalStaffCreateSerializer(serializers.Serializer):
     professional_license_number = serializers.CharField(required=False, allow_blank=True)
 
     def validate_email(self, value):
-        if CustomUser.objects.filter(email__iexact=value).exists():
+        if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("An account with this email already exists.")
         return value
 
@@ -187,10 +187,10 @@ class HospitalStaffCreateSerializer(serializers.Serializer):
         temp_password = get_random_string(
             length=12, allowed_chars="ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%"
         )
-        user = CustomUser.objects.create_user(
+        user = User.objects.create_user(
             email=validated_data["email"],
             password=temp_password,
-            user_type=CustomUser.UserType.HOSPITAL_STAFF,
+            user_type=User.UserType.HOSPITAL_STAFF,
             must_change_password=True,
         )
         staff_profile = HospitalStaffProfile.objects.create(
@@ -209,6 +209,14 @@ class HospitalStaffCreateSerializer(serializers.Serializer):
         staff_profile._temp_password = temp_password
         return staff_profile
 
+class HospitalSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Hospital
+        fields = [
+            'id', 'name', 'registration_number', 'phermc_number', 
+            'cac_number', 'address', 'verification_status', 'created_at'
+        ]
 
 # ---------------------------------------------------------------------------
 # LOGIN — custom JWT claims
@@ -232,7 +240,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token["user_type"] = user.user_type
         token["must_change_password"] = user.must_change_password
 
-        if user.user_type == CustomUser.UserType.HOSPITAL_STAFF:
+        if user.user_type == User.UserType.HOSPITAL_STAFF:
             staff_profile = getattr(user, "staff_profile", None)
             if staff_profile:
                 token["hospital_id"] = str(staff_profile.hospital_id)
@@ -252,6 +260,14 @@ class PatientProfileSerializer(serializers.ModelSerializer):
         fields = ["id", "full_name", "date_of_birth", "gender", "blood_type", "account_type", "created_at"]
         read_only_fields = ["id", "account_type", "created_at"]
 
+
+class UserSerializer(serializers.ModelSerializer):
+
+    profile = PatientProfileSerializer()
+
+    class Meta:
+        model = User
+        fields = ['id', 'email', 'phone_number', 'user_type', 'profile']
 
 class HospitalStaffProfileSerializer(serializers.ModelSerializer):
     hospital_name = serializers.CharField(source="hospital.name", read_only=True)

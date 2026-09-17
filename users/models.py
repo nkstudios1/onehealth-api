@@ -4,11 +4,11 @@ from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.utils import timezone
-
+from rest_framework_simplejwt.tokens import RefreshToken
 from .managers import CustomUserManager
 
 
-class CustomUser(AbstractBaseUser, PermissionsMixin):
+class User(AbstractBaseUser, PermissionsMixin):
     """
     The ONLY table that can actually log in to the platform.
 
@@ -61,6 +61,18 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return f"{self.email} ({self.user_type})"
+
+    def auth_tokens(self):
+        refresh = RefreshToken.for_user(self)
+
+        # update last login date
+        self.last_login = timezone.now()
+        self.save()
+        
+        return {
+            "access": str(refresh.access_token),
+            "refresh": str(refresh)
+        }
 
 
 class Hospital(models.Model):
@@ -131,7 +143,7 @@ class PatientProfile(models.Model):
 
     # Nullable on purpose — see docstring above.
     user = models.OneToOneField(
-        CustomUser, on_delete=models.CASCADE, null=True, blank=True, related_name="patient_profile"
+        User, on_delete=models.CASCADE, null=True, blank=True, related_name="patient_profile"
     )
 
     full_name = models.CharField(max_length=255)
@@ -180,7 +192,7 @@ class HospitalStaffProfile(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name="staff_profile")
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="staff_profile")
     hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name="staff")
 
     full_name = models.CharField(max_length=255)
