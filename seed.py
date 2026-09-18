@@ -59,11 +59,30 @@ def seed_database():
         """
         Create a user without depending on the exact implementation
         of the custom UserManager.
+
+        The admin demo requires every seeded account to be valid for Django's
+        admin login flow, so we ensure `is_staff=True` even when the database
+        has already been bootstrapped once.
         """
 
         user = User.objects.filter(email=email).first()
 
         if user:
+            needs_admin_update = (
+                user.phone_number != phone
+                or user.user_type != user_type
+                or user.is_active is not True
+                or user.is_staff is not True
+            )
+            if needs_admin_update:
+                user.phone_number = phone
+                user.user_type = user_type
+                user.is_active = True
+                user.is_staff = True
+                user.save(update_fields=["phone_number", "user_type", "is_active", "is_staff"])
+            if not user.has_usable_password():
+                user.set_password(password)
+                user.save(update_fields=["password"])
             return user
 
         user = User(
@@ -71,6 +90,7 @@ def seed_database():
             phone_number=phone,
             user_type=user_type,
             is_active=True,
+            is_staff=True,
         )
 
         user.set_password(password)

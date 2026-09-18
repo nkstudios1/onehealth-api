@@ -26,6 +26,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     class UserType(models.TextChoices):
         PATIENT = "patient", "Patient"
         HOSPITAL_STAFF = "hospital_staff", "Hospital Staff"
+        HOSPITAL_ADMIN = "hospital_admin", "Hospital Admin"
         PLATFORM_ADMIN = "platform_admin", "Platform Admin"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -33,6 +34,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     # "user id 1, 2, 3..." and probing the API for valid accounts —
     # matters a lot for a medical records system.
 
+    full_name = models.CharField(max_length=225, null=True, blank=True)
     email = models.EmailField(unique=True, db_index=True)
     phone_number = models.CharField(max_length=20, unique=True)
 
@@ -93,6 +95,8 @@ class Hospital(models.Model):
         # just flip status — keeps historical records intact.
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    admin = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
 
     name = models.CharField(max_length=255)
     registration_number = models.CharField(
