@@ -24,7 +24,7 @@ def staff_for_request(request):
 
 
 @swagger_auto_schema(method="get", tags=["Medical Records"], operation_summary="List my medical records", operation_description="""Returns all medical records associated with the authenticated patient.""", security=[{"Bearer": []}], responses={200: openapi.Response(description="Medical records retrieved successfully")})
-@swagger_auto_schema(method="post", tags=["Medical Records"], operation_summary="Create a new medical record", operation_description="""Creates a new medical record entry for the authenticated patient.""", security=[{"Bearer": []}], request_body=openapi.Schema(type=openapi.TYPE_OBJECT, required=["entry_type", "description"], properties={"entry_type": openapi.Schema(type=openapi.TYPE_STRING, description="Entry type for the record."), "description": openapi.Schema(type=openapi.TYPE_STRING, description="Clinical description of the record.")}, responses={201: openapi.Response(description="Medical record added successfully")})
+@swagger_auto_schema(method="post", tags=["Medical Records"], operation_summary="Create a new medical record", operation_description="""Creates a new medical record entry for the authenticated patient.""", security=[{"Bearer": []}], request_body=openapi.Schema(type=openapi.TYPE_OBJECT, required=["entry_type", "description"], properties={"entry_type": openapi.Schema(type=openapi.TYPE_STRING, description="Entry type for the record."), "description": openapi.Schema(type=openapi.TYPE_STRING, description="Clinical description of the record.")}, responses={201: openapi.Response(description="Medical record added successfully")}))
 @api_view(["GET", "POST"])
 @permission_classes([IsPatient])
 def my_records(request):
