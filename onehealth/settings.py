@@ -343,6 +343,12 @@ JAZZMIN_SETTINGS = {
     "default_icon_parents": "fas fa-folder",
     "default_icon_children": "fas fa-circle",
 
+    "topmenu_links": [
+        {"name": "Register patient", "url": "/api/v1/auth/register/patient-page/", "new_window": True},
+        {"name": "Register hospital", "url": "/api/v1/auth/register/hospital-page/", "new_window": True},
+        {"name": "Register hospital staff", "url": "/api/v1/auth/register/staff-page/", "new_window": True},
+    ],
+
     "icons": {
 
         # =========================
