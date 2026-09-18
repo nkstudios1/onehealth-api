@@ -279,14 +279,14 @@ LOGGING = {
     },
 }
 
-EMAIL_HOST = config('EMAIL_HOST')
-EMAIL_PORT = config('EMAIL_PORT', cast=int)
-EMAIL_USE_SSL = config('EMAIL_USE_SSL', cast=bool)
-EMAIL_USE_TLS = config('EMAIL_USE_TLS', cast=bool)
-EMAIL_HOST_USER = config('EMAIL_HOST_USER')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
+EMAIL_HOST = config('EMAIL_HOST', default='localhost')
+EMAIL_PORT = config('EMAIL_PORT', cast=int, default=587)
+EMAIL_USE_SSL = config('EMAIL_USE_SSL', cast=bool, default=False)
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', cast=bool, default=True)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 
-SWAGGER_DOCS_BASE_URL = config('SWAGGER_DOCS_BASE_URL')
+SWAGGER_DOCS_BASE_URL = config('SWAGGER_DOCS_BASE_URL', default='')
 
 # Access/escalation safety windows. Keep configurable so product policy can change without a schema change.
 ACCESS_REQUEST_RESPONSE_TIMEOUT_MINUTES = config("ACCESS_REQUEST_RESPONSE_TIMEOUT_MINUTES", cast=int, default=15)
@@ -300,16 +300,20 @@ MAX_EMERGENCY_CONTACTS = config("MAX_EMERGENCY_CONTACTS", cast=int, default=5)
 # ============================================================================
 # Allow frontend to make requests to the API from different origins
 
-# In development, allow localhost
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Vite dev server
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",  # Alternative port
-    "http://127.0.0.1:3000",
-]
+# Read from environment variable if available, otherwise use defaults
+CORS_ALLOWED_ORIGINS_ENV = config('CORS_ALLOWED_ORIGINS', default='')
 
-# In production, add your deployed frontend URL to CORS_ALLOWED_ORIGINS
-# Example: "https://onehealth.com", "https://app.onehealth.com"
+if CORS_ALLOWED_ORIGINS_ENV:
+    # Split by comma if provided in env
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in CORS_ALLOWED_ORIGINS_ENV.split(',') if origin.strip()]
+else:
+    # Default origins for development
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
 # Allow credentials (cookies, authorization headers)
 CORS_ALLOW_CREDENTIALS = True
