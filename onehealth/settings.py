@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "cards",
 
     'drf_yasg',
+    'import_export',
 ]
 
 MIDDLEWARE = [
