@@ -6,6 +6,7 @@ from django.test import RequestFactory, TestCase
 
 from access.models import AccessRequest
 from cards.models import PatientCard
+from records.admin import MedicalRecordAdmin
 from records.models import MedicalRecord
 from users.admin import HospitalAdmin, HospitalStaffProfileAdmin, PatientProfileAdmin, UserAdmin
 from users.models import Hospital, HospitalStaffProfile, PatientProfile, User
@@ -184,6 +185,69 @@ class UniversalAdminLoginTests(TestCase):
     def test_admin_authentication_accepts_email_or_phone_number(self):
         self.assertIsNotNone(authenticate(username=self.user.email, password="StrongPass123!"))
         self.assertIsNotNone(authenticate(username=self.user.phone_number, password="StrongPass123!"))
+
+
+class HospitalStaffCanCreateClinicalRecordsTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.site = AdminSite()
+
+        self.hospital = Hospital.objects.create(
+            name="City Clinic",
+            registration_number="HOSP-CITY-001",
+            verification_status=Hospital.VerificationStatus.VERIFIED,
+        )
+
+        self.doctor_user = User.objects.create_user(
+            email="doctor@city.test",
+            password="StrongPass123!",
+            phone_number="+2348000000100",
+            user_type=User.UserType.HOSPITAL_STAFF,
+            is_staff=True,
+        )
+        self.doctor_profile = HospitalStaffProfile.objects.create(
+            user=self.doctor_user,
+            hospital=self.hospital,
+            full_name="Dr. City",
+            role=HospitalStaffProfile.Role.DOCTOR,
+            professional_license_number="LIC-100",
+        )
+
+        self.patient_user = User.objects.create_user(
+            email="patient@city.test",
+            password="StrongPass123!",
+            phone_number="+2348000000101",
+            user_type=User.UserType.PATIENT,
+            is_staff=True,
+        )
+        self.patient_profile = PatientProfile.objects.create(
+            user=self.patient_user,
+            full_name="Jane Patient",
+            date_of_birth=date(1990, 1, 1),
+            account_type=PatientProfile.AccountType.SELF_MANAGED,
+        )
+
+        self.visit = Visit.objects.create(
+            patient=self.patient_profile,
+            hospital=self.hospital,
+            created_by_staff=self.doctor_profile,
+        )
+
+    def test_hospital_staff_can_add_new_medical_record(self):
+        request = self.factory.get("/")
+        request.user = self.doctor_user
+
+        medical_record_admin = MedicalRecordAdmin(MedicalRecord, self.site)
+        self.assertTrue(medical_record_admin.has_add_permission(request))
+        self.assertTrue(medical_record_admin.has_view_permission(request))
+
+        form = medical_record_admin.get_form(request)
+        self.assertEqual(form.base_fields["hospital"].initial, self.hospital.id)
+        self.assertTrue(form.base_fields["hospital"].disabled)
+        self.assertEqual(form.base_fields["verified_by_staff"].initial, self.doctor_profile.pk)
+        self.assertTrue(form.base_fields["verified_by_staff"].disabled)
+        self.assertEqual(form.base_fields["verification_status"].initial, MedicalRecord.VerificationStatus.DOCTOR_VERIFIED)
+        self.assertTrue(form.base_fields["verification_status"].disabled)
 
 
 class HospitalStaffAndHospitalAdminPermissionTests(TestCase):

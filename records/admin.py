@@ -3,8 +3,8 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Q
 from django.utils import timezone
 from import_export.admin import ImportExportModelAdmin
-from users.admin import RoleAwareModelAdmin
-from users.models import User
+from users.admin import RoleAwareModelAdmin, hospital_for_user
+from users.models import Hospital, HospitalStaffProfile, User
 
 from .models import MedicalRecord
 
@@ -75,14 +75,62 @@ class MedicalRecordAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
         return is_platform_admin(request.user)
 
     def has_add_permission(self, request):
-        return is_platform_admin(request.user)
+        if is_platform_admin(request.user):
+            return True
+        if request.user.user_type not in (User.UserType.HOSPITAL_STAFF, User.UserType.HOSPITAL_ADMIN):
+            return False
+        return bool(current_staff(request.user) or User.UserType.HOSPITAL_ADMIN == request.user.user_type)
 
     def has_delete_permission(self, request, obj=None):
         return is_platform_admin(request.user)
 
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        if is_platform_admin(request.user) or obj is not None:
+            return form
+
+        if request.user.user_type not in (User.UserType.HOSPITAL_STAFF, User.UserType.HOSPITAL_ADMIN):
+            return form
+
+        staff = current_staff(request.user)
+        hospital = hospital_for_user(request.user)
+        if not hospital:
+            return form
+
+        if "hospital" in form.base_fields:
+            form.base_fields["hospital"].queryset = Hospital.objects.filter(pk=hospital.id)
+            form.base_fields["hospital"].initial = hospital.id
+            form.base_fields["hospital"].disabled = True
+
+        if staff and "created_by_staff" in form.base_fields:
+            form.base_fields["created_by_staff"].queryset = HospitalStaffProfile.objects.filter(pk=staff.pk)
+            form.base_fields["created_by_staff"].initial = staff.pk
+            form.base_fields["created_by_staff"].disabled = True
+
+        if staff and "verified_by_staff" in form.base_fields:
+            form.base_fields["verified_by_staff"].queryset = HospitalStaffProfile.objects.filter(pk=staff.pk)
+            form.base_fields["verified_by_staff"].initial = staff.pk
+            form.base_fields["verified_by_staff"].disabled = True
+
+        if "verification_status" in form.base_fields:
+            form.base_fields["verification_status"].initial = MedicalRecord.VerificationStatus.DOCTOR_VERIFIED
+            form.base_fields["verification_status"].disabled = True
+
+        return form
+
     def save_model(self, request, obj, form, change):
         if change and not is_platform_admin(request.user):
             raise ValidationError("Medical records are append-only and cannot be edited.")
+
+        if not change and request.user.user_type in (User.UserType.HOSPITAL_STAFF, User.UserType.HOSPITAL_ADMIN):
+            staff = current_staff(request.user)
+            hospital = hospital_for_user(request.user)
+            if staff and hospital:
+                obj.hospital = hospital
+                obj.created_by_staff = staff
+                obj.verified_by_staff = staff
+                obj.verification_status = MedicalRecord.VerificationStatus.DOCTOR_VERIFIED
+
         super().save_model(request, obj, form, change)
 
     def delete_model(self, request, obj):
