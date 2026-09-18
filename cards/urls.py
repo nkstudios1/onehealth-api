@@ -7,4 +7,5 @@ urlpatterns = [
     path("patients/me/card/renew/", views.renew_card, name="renew-card"),
     path("patients/me/card/revoke/", views.revoke_card, name="revoke-card"),
     path("cards/lookup/", views.lookup_card, name="card-lookup"),
+    path("patients/my-card/", views.patient_card_qr_page, name="patient_card_qr_page")
 ]
