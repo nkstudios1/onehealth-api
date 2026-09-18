@@ -1,10 +1,15 @@
 from django.contrib import admin
 from django.urls import include, path
+from django.http import JsonResponse
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from django.conf import settings
+
+def health_check(request):
+    """Simple health check endpoint for monitoring."""
+    return JsonResponse({"status": "healthy", "service": "onehealth-api"})
 
 schema_view = get_schema_view(
    openapi.Info(
@@ -22,6 +27,9 @@ schema_view = get_schema_view(
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+
+    # --- Health check ---
+    path("api/v1/", health_check, name="health-check"),
 
     # --- Auth module ---
     path("api/v1/auth/", include("users.urls")),
