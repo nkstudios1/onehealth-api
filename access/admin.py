@@ -113,7 +113,14 @@ class AccessRequestAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
             if "visit" in form.base_fields:
                 form.base_fields["visit"].queryset = __import__("visits.models", fromlist=["Visit"]).Visit.objects.filter(patient__user=request.user)
             if "requested_by_staff" in form.base_fields:
-                form.base_fields["requested_by_staff"].queryset = __import__("users.models", fromlist=["HospitalStaffProfile"]).HospitalStaffProfile.objects.none()
+                queryset = __import__("users.models", fromlist=["HospitalStaffProfile"]).HospitalStaffProfile.objects.none()
+                if obj and obj.requested_by_staff_id:
+                    queryset = __import__("users.models", fromlist=["HospitalStaffProfile"]).HospitalStaffProfile.objects.filter(pk=obj.requested_by_staff_id)
+                    form.base_fields["requested_by_staff"].initial = obj.requested_by_staff_id
+                form.base_fields["requested_by_staff"].queryset = queryset
+                form.base_fields["requested_by_staff"].disabled = True
+            if "status" in form.base_fields:
+                form.base_fields["status"].disabled = False
             return form
         if request.user.user_type in (User.UserType.HOSPITAL_STAFF, User.UserType.HOSPITAL_ADMIN):
             staff = current_staff(request.user)
@@ -141,9 +148,22 @@ class AccessRequestAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
                 form.base_fields["visit"].queryset = visit_queryset
             if "requested_by_staff" in form.base_fields:
                 form.base_fields["requested_by_staff"].queryset = __import__("users.models", fromlist=["HospitalStaffProfile"]).HospitalStaffProfile.objects.filter(hospital=hospital)
-                form.base_fields["requested_by_staff"].initial = staff.pk if staff else None
+                form.base_fields["requested_by_staff"].initial = obj.requested_by_staff_id if obj and obj.requested_by_staff_id else (staff.pk if staff else None)
                 form.base_fields["requested_by_staff"].disabled = True
+            if "status" in form.base_fields:
+                form.base_fields["status"].initial = obj.status if obj and obj.status else AccessRequest.Status.PENDING
+                form.base_fields["status"].disabled = True
         return form
+
+    def save_model(self, request, obj, form, change):
+        if not is_platform_admin(request.user) and request.user.user_type in (User.UserType.HOSPITAL_STAFF, User.UserType.HOSPITAL_ADMIN):
+            if not obj.pk:
+                obj.status = AccessRequest.Status.PENDING
+            else:
+                current = AccessRequest.objects.filter(pk=obj.pk).only("status").first()
+                if current is not None:
+                    obj.status = current.status
+        super().save_model(request, obj, form, change)
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)

@@ -292,6 +292,36 @@ class HospitalStaffCanCreateClinicalRecordsTests(TestCase):
         self.assertEqual(form.base_fields["requested_by_staff"].initial, self.doctor_profile.pk)
         self.assertTrue(form.base_fields["requested_by_staff"].disabled)
 
+    def test_patient_view_form_keeps_requested_by_staff_selected_for_existing_request(self):
+        request = self.factory.get("/")
+        request.user = self.patient_user
+
+        access_request = AccessRequest.objects.create(
+            visit=self.visit,
+            patient=self.patient_profile,
+            hospital=self.hospital,
+            requested_by_staff=self.doctor_profile,
+            request_type=AccessRequest.RequestType.NORMAL,
+            access_level=AccessRequest.AccessLevel.FULL_RECORD,
+            status=AccessRequest.Status.PENDING,
+        )
+
+        access_request_admin = AccessRequestAdmin(AccessRequest, self.site)
+        form = access_request_admin.get_form(request, obj=access_request)
+
+        self.assertEqual(form.base_fields["requested_by_staff"].initial, self.doctor_profile.pk)
+        self.assertTrue(form.base_fields["requested_by_staff"].disabled)
+
+    def test_staff_access_request_status_is_disabled_and_defaults_to_pending(self):
+        request = self.factory.get("/")
+        request.user = self.doctor_user
+
+        access_request_admin = AccessRequestAdmin(AccessRequest, self.site)
+        form = access_request_admin.get_form(request)
+
+        self.assertEqual(form.base_fields["status"].initial, AccessRequest.Status.PENDING)
+        self.assertTrue(form.base_fields["status"].disabled)
+
     def test_only_superusers_and_hospital_staff_can_add_access_requests(self):
         staff_request = self.factory.get("/")
         staff_request.user = self.doctor_user
