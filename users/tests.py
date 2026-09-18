@@ -184,3 +184,104 @@ class UniversalAdminLoginTests(TestCase):
     def test_admin_authentication_accepts_email_or_phone_number(self):
         self.assertIsNotNone(authenticate(username=self.user.email, password="StrongPass123!"))
         self.assertIsNotNone(authenticate(username=self.user.phone_number, password="StrongPass123!"))
+
+
+class HospitalStaffAndHospitalAdminPermissionTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.site = AdminSite()
+
+        self.hospital_a = Hospital.objects.create(
+            name="Alpha General",
+            registration_number="HOSP-ALPHA-001",
+            verification_status=Hospital.VerificationStatus.VERIFIED,
+        )
+        self.hospital_b = Hospital.objects.create(
+            name="Beta General",
+            registration_number="HOSP-BETA-001",
+            verification_status=Hospital.VerificationStatus.VERIFIED,
+        )
+
+        self.hospital_admin_user = User.objects.create_user(
+            email="admin@alpha.test",
+            password="StrongPass123!",
+            phone_number="+2348000000001",
+            user_type=User.UserType.HOSPITAL_ADMIN,
+            is_staff=True,
+        )
+        self.hospital_a.admin = self.hospital_admin_user
+        self.hospital_a.save(update_fields=["admin"])
+
+        self.hospital_admin_staff = User.objects.create_user(
+            email="adminstaff@alpha.test",
+            password="StrongPass123!",
+            phone_number="+2348000000002",
+            user_type=User.UserType.HOSPITAL_STAFF,
+            is_staff=True,
+        )
+        self.hospital_admin_staff_profile = HospitalStaffProfile.objects.create(
+            user=self.hospital_admin_staff,
+            hospital=self.hospital_a,
+            full_name="Admin Staff",
+            role=HospitalStaffProfile.Role.ADMIN,
+        )
+
+        self.regular_staff_user = User.objects.create_user(
+            email="doctor@alpha.test",
+            password="StrongPass123!",
+            phone_number="+2348000000003",
+            user_type=User.UserType.HOSPITAL_STAFF,
+            is_staff=True,
+        )
+        self.regular_staff_profile = HospitalStaffProfile.objects.create(
+            user=self.regular_staff_user,
+            hospital=self.hospital_a,
+            full_name="Doctor One",
+            role=HospitalStaffProfile.Role.DOCTOR,
+            professional_license_number="LIC-001",
+        )
+
+        self.other_hospital_staff_user = User.objects.create_user(
+            email="doctor@beta.test",
+            password="StrongPass123!",
+            phone_number="+2348000000004",
+            user_type=User.UserType.HOSPITAL_STAFF,
+            is_staff=True,
+        )
+        self.other_hospital_staff_profile = HospitalStaffProfile.objects.create(
+            user=self.other_hospital_staff_user,
+            hospital=self.hospital_b,
+            full_name="Doctor Two",
+            role=HospitalStaffProfile.Role.DOCTOR,
+            professional_license_number="LIC-002",
+        )
+
+    def test_regular_hospital_staff_cannot_edit_their_role_or_hospital(self):
+        request = self.factory.get("/")
+        request.user = self.regular_staff_user
+
+        hospital_admin = HospitalAdmin(Hospital, self.site)
+        staff_admin = HospitalStaffProfileAdmin(HospitalStaffProfile, self.site)
+
+        self.assertFalse(hospital_admin.has_change_permission(request, self.hospital_a))
+        self.assertTrue(staff_admin.has_view_permission(request, self.regular_staff_profile))
+        self.assertFalse(staff_admin.has_change_permission(request, self.regular_staff_profile))
+
+        form = staff_admin.get_form(request, obj=self.regular_staff_profile)
+        self.assertTrue(form.base_fields["role"].disabled)
+
+    def test_hospital_admin_can_see_and_edit_all_staff_in_own_hospital_only(self):
+        request = self.factory.get("/")
+        request.user = self.hospital_admin_user
+
+        hospital_admin = HospitalAdmin(Hospital, self.site)
+        staff_admin = HospitalStaffProfileAdmin(HospitalStaffProfile, self.site)
+
+        self.assertTrue(hospital_admin.has_change_permission(request, self.hospital_a))
+        self.assertFalse(hospital_admin.has_change_permission(request, self.hospital_b))
+        self.assertTrue(staff_admin.has_view_permission(request, self.regular_staff_profile))
+        self.assertTrue(staff_admin.has_change_permission(request, self.regular_staff_profile))
+        self.assertFalse(staff_admin.has_change_permission(request, self.other_hospital_staff_profile))
+
+        form = staff_admin.get_form(request, obj=self.regular_staff_profile)
+        self.assertFalse(form.base_fields["role"].disabled)

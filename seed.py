@@ -1045,3 +1045,40 @@ def seed_database():
             "escalations": EmergencyEscalation.objects.count(),
             "audit_logs": AuditLog.objects.count(),
         }
+
+def update_names():
+    from users.models import User
+
+    updated = 0
+    skipped = 0
+
+    for user in User.objects.all():
+        name = None
+
+        # Patient user
+        if user.user_type == User.UserType.PATIENT:
+            try:
+                name = user.patient_profile.full_name
+            except User.patient_profile.RelatedObjectDoesNotExist:
+                pass
+
+        # Hospital staff / hospital admin user
+        elif user.user_type in [
+            User.UserType.HOSPITAL_STAFF,
+            User.UserType.HOSPITAL_ADMIN,
+        ]:
+            try:
+                name = user.staff_profile.full_name
+            except User.staff_profile.RelatedObjectDoesNotExist:
+                pass
+
+        # Update if a profile name exists
+        if name:
+            user.full_name = name
+            user.save(update_fields=["full_name"])
+            updated += 1
+        else:
+            skipped += 1
+
+    print(f"Updated: {updated}")
+    print(f"Skipped: {skipped}")

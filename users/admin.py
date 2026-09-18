@@ -186,8 +186,8 @@ class HospitalAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
         if not hospital:
             return False
         if obj is None:
-            return True
-        return obj.pk == hospital.id
+            return is_hospital_admin_user(request.user)
+        return is_hospital_admin_user(request.user) and obj.pk == hospital.id
 
     def has_add_permission(self, request):
         return is_platform_admin(request.user)
@@ -318,8 +318,11 @@ class HospitalStaffProfileAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
         hospital = hospital_for_user(request.user)
         if not hospital:
             return form
+
         if "hospital" in form.base_fields:
             form.base_fields["hospital"].queryset = Hospital.objects.filter(pk=hospital.id)
+            form.base_fields["hospital"].disabled = not is_hospital_admin_user(request.user)
+
         if "user" in form.base_fields:
             if is_hospital_admin_user(request.user):
                 form.base_fields["user"].queryset = User.objects.filter(
@@ -328,6 +331,11 @@ class HospitalStaffProfileAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
                 ).distinct()
             else:
                 form.base_fields["user"].queryset = User.objects.filter(pk=request.user.pk)
+                form.base_fields["user"].disabled = True
+
+        if "role" in form.base_fields:
+            form.base_fields["role"].disabled = not is_hospital_admin_user(request.user)
+
         return form
 
     def get_queryset(self, request):
@@ -367,11 +375,15 @@ class HospitalStaffProfileAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
         hospital = hospital_for_user(request.user)
         if not hospital:
             return False
+
         if is_hospital_admin_user(request.user):
             if obj is None:
                 return True
             return obj.hospital_id == hospital.id
-        return obj is not None and obj.user_id == request.user.id
+
+        if obj is None:
+            return False
+        return obj.user_id == request.user.id and obj.hospital_id == hospital.id and False
 
     def has_add_permission(self, request):
         return is_platform_admin(request.user) or is_hospital_admin_user(request.user)
