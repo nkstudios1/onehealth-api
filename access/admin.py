@@ -124,12 +124,16 @@ class AccessRequestAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
                 return form
             if "hospital" in form.base_fields:
                 form.base_fields["hospital"].queryset = __import__("users.models", fromlist=["Hospital"]).Hospital.objects.filter(pk=hospital.id)
+                form.base_fields["hospital"].initial = hospital.id
+                form.base_fields["hospital"].disabled = True
             if "patient" in form.base_fields:
                 form.base_fields["patient"].queryset = __import__("users.models", fromlist=["PatientProfile"]).PatientProfile.objects.filter(visits__hospital=hospital).distinct()
             if "visit" in form.base_fields:
                 form.base_fields["visit"].queryset = __import__("visits.models", fromlist=["Visit"]).Visit.objects.filter(hospital=hospital)
             if "requested_by_staff" in form.base_fields:
                 form.base_fields["requested_by_staff"].queryset = __import__("users.models", fromlist=["HospitalStaffProfile"]).HospitalStaffProfile.objects.filter(hospital=hospital)
+                form.base_fields["requested_by_staff"].initial = staff.pk if staff else None
+                form.base_fields["requested_by_staff"].disabled = True
         return form
 
     def get_queryset(self, request):
@@ -179,6 +183,13 @@ class AccessRequestAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
                 return True
             return obj.hospital_id == hospital.id
         return False
+
+    def has_add_permission(self, request):
+        if is_platform_admin(request.user):
+            return True
+        if request.user.user_type not in (User.UserType.HOSPITAL_STAFF, User.UserType.HOSPITAL_ADMIN):
+            return False
+        return bool(__import__("users.admin", fromlist=["hospital_for_user"]).hospital_for_user(request.user))
 
     def has_delete_permission(self, request, obj=None):
         return is_platform_admin(request.user)

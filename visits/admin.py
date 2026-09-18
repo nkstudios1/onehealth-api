@@ -78,8 +78,9 @@ class VisitAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
         if request.user.user_type == User.UserType.PATIENT:
             return obj.patient.user_id == request.user.id
         if request.user.user_type in (User.UserType.HOSPITAL_STAFF, User.UserType.HOSPITAL_ADMIN):
-            hospital = hospital_for_user(request.user)
-            return bool(hospital and obj.hospital_id == hospital.id)
+            if obj is None:
+                return True
+            return bool(obj.hospital_id == hospital_for_user(request.user).id) and __import__("users.admin", fromlist=["has_approved_patient_access"]).has_approved_patient_access(request.user, obj.patient)
         return False
 
     def has_change_permission(self, request, obj=None):
@@ -142,6 +143,20 @@ class VitalAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
     list_filter = ("recorded_by_staff__hospital",)
     search_fields = ("id", "visit__patient__full_name", "recorded_by_staff__full_name")
     readonly_fields = ("id", "recorded_at")
+
+    def has_view_permission(self, request, obj=None):
+        if is_platform_admin(request.user):
+            return True
+        if obj is None:
+            return True
+        if request.user.user_type == User.UserType.PATIENT:
+            return obj.visit.patient.user_id == request.user.id
+        if request.user.user_type in (User.UserType.HOSPITAL_STAFF, User.UserType.HOSPITAL_ADMIN):
+            hospital = hospital_for_user(request.user)
+            if not hospital or obj.visit.hospital_id != hospital.id:
+                return False
+            return __import__("users.admin", fromlist=["has_approved_patient_access"]).has_approved_patient_access(request.user, obj.visit.patient)
+        return False
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)

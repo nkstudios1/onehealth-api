@@ -4,6 +4,8 @@ from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.utils import timezone
 from import_export.admin import ImportExportModelAdmin
+
+from access.models import AccessGrant, AccessRequest
 from .models import User, Hospital, HospitalStaffProfile, PatientProfile
 
 
@@ -33,6 +35,26 @@ def hospital_for_user(user):
     if getattr(user, "user_type", None) == User.UserType.HOSPITAL_ADMIN:
         return Hospital.objects.filter(admin=user).first()
     return None
+
+
+def has_approved_patient_access(user, patient):
+    if not user or not patient or not getattr(user, "is_active", False):
+        return False
+    if is_platform_admin(user):
+        return True
+    if getattr(user, "user_type", None) == User.UserType.PATIENT:
+        return bool(patient.user_id == user.id)
+    if getattr(user, "user_type", None) not in (User.UserType.HOSPITAL_STAFF, User.UserType.HOSPITAL_ADMIN):
+        return False
+    hospital = hospital_for_user(user)
+    if not hospital:
+        return False
+    return AccessGrant.objects.filter(
+        access_request__patient=patient,
+        access_request__hospital=hospital,
+        access_request__status=AccessRequest.Status.APPROVED,
+        revoked_at__isnull=True,
+    ).exists()
 
 
 def site_has_permission(request):
@@ -115,6 +137,8 @@ class UserAdmin(ImportExportModelAdmin, DjangoUserAdmin, RoleAwareModelAdmin):
             return True
         if obj is None:
             return True
+        if obj.user_type == User.UserType.PATIENT:
+            return has_approved_patient_access(request.user, getattr(obj, "patient_profile", None))
         return self.get_queryset(request).filter(pk=obj.pk).exists()
 
     def has_change_permission(self, request, obj=None):
@@ -281,11 +305,7 @@ class PatientProfileAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
                 return False
             if obj is None:
                 return True
-            return (
-                obj.visits.filter(hospital_id=hospital.id).exists()
-                or obj.medical_records.filter(hospital_id=hospital.id).exists()
-                or obj.access_requests.filter(hospital_id=hospital.id).exists()
-            )
+            return has_approved_patient_access(request.user, obj)
         return False
 
     def has_change_permission(self, request, obj=None):

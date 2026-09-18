@@ -32,6 +32,7 @@ class PatientRegistrationForm(forms.Form):
 
     def save(self):
         user = User.objects.create_user(
+            full_name=self.cleaned_data["full_name"],
             email=self.cleaned_data["email"],
             password=self.cleaned_data["password"],
             phone_number=self.cleaned_data["phone_number"],

@@ -68,7 +68,9 @@ class MedicalRecordAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
             hospital = getattr(staff, "hospital", None) if staff else None
             if not hospital and request.user.user_type == User.UserType.HOSPITAL_ADMIN:
                 hospital = __import__("users.models", fromlist=["Hospital"]).Hospital.objects.filter(admin=request.user).first()
-            return bool(hospital and obj.hospital_id == hospital.id)
+            if not hospital or obj.hospital_id != hospital.id:
+                return False
+            return __import__("users.admin", fromlist=["has_approved_patient_access"]).has_approved_patient_access(request.user, obj.patient)
         return False
 
     def has_change_permission(self, request, obj=None):

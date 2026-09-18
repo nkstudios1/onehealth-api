@@ -4,7 +4,8 @@ from django.contrib.admin.sites import AdminSite
 from django.contrib.auth import authenticate
 from django.test import RequestFactory, TestCase
 
-from access.models import AccessRequest
+from access.admin import AccessRequestAdmin
+from access.models import AccessGrant, AccessRequest
 from cards.models import PatientCard
 from records.admin import MedicalRecordAdmin
 from records.models import MedicalRecord
@@ -248,6 +249,59 @@ class HospitalStaffCanCreateClinicalRecordsTests(TestCase):
         self.assertTrue(form.base_fields["verified_by_staff"].disabled)
         self.assertEqual(form.base_fields["verification_status"].initial, MedicalRecord.VerificationStatus.DOCTOR_VERIFIED)
         self.assertTrue(form.base_fields["verification_status"].disabled)
+
+    def test_hospital_staff_requires_approved_access_grant_to_view_patient_detail(self):
+        request = self.factory.get("/")
+        request.user = self.doctor_user
+
+        patient_admin = PatientProfileAdmin(PatientProfile, self.site)
+        self.assertIn(self.patient_profile, patient_admin.get_queryset(request))
+        self.assertFalse(patient_admin.has_view_permission(request, self.patient_profile))
+
+        access_request = AccessRequest.objects.create(
+            visit=self.visit,
+            patient=self.patient_profile,
+            hospital=self.hospital,
+            requested_by_staff=self.doctor_profile,
+            request_type=AccessRequest.RequestType.NORMAL,
+            access_level=AccessRequest.AccessLevel.FULL_RECORD,
+            status=AccessRequest.Status.PENDING,
+        )
+        self.assertFalse(patient_admin.has_view_permission(request, self.patient_profile))
+
+        access_request.status = AccessRequest.Status.APPROVED
+        access_request.save(update_fields=["status"])
+        AccessGrant.objects.create(
+            access_request=access_request,
+            access_level=AccessRequest.AccessLevel.FULL_RECORD,
+            granted_by=AccessGrant.GrantedBy.PATIENT,
+        )
+
+        self.assertTrue(patient_admin.has_view_permission(request, self.patient_profile))
+
+    def test_staff_access_request_form_defaults_to_own_hospital_and_staff(self):
+        request = self.factory.get("/")
+        request.user = self.doctor_user
+
+        access_request_admin = AccessRequestAdmin(AccessRequest, self.site)
+        form = access_request_admin.get_form(request)
+
+        self.assertEqual(form.base_fields["hospital"].initial, self.hospital.id)
+        self.assertTrue(form.base_fields["hospital"].disabled)
+        self.assertEqual(form.base_fields["requested_by_staff"].initial, self.doctor_profile.pk)
+        self.assertTrue(form.base_fields["requested_by_staff"].disabled)
+
+    def test_only_superusers_and_hospital_staff_can_add_access_requests(self):
+        staff_request = self.factory.get("/")
+        staff_request.user = self.doctor_user
+
+        patient_request = self.factory.get("/")
+        patient_request.user = self.patient_user
+
+        access_request_admin = AccessRequestAdmin(AccessRequest, self.site)
+
+        self.assertTrue(access_request_admin.has_add_permission(staff_request))
+        self.assertFalse(access_request_admin.has_add_permission(patient_request))
 
 
 class HospitalStaffAndHospitalAdminPermissionTests(TestCase):
