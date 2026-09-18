@@ -1,3 +1,5 @@
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
@@ -8,6 +10,20 @@ from .models import AuditLog
 from .serializers import AuditLogSerializer
 
 
+@swagger_auto_schema(
+    method="get",
+    tags=["Audit Logs"],
+    operation_summary="List audit logs",
+    operation_description="""
+    Returns the audit records visible to the authenticated user according to their role.
+
+    **Authentication:** Required.
+    """,
+    security=[{"Bearer": []}],
+    responses={
+        200: openapi.Response(description="Audit logs retrieved successfully")
+    }
+)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def audit_logs(request):

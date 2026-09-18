@@ -172,6 +172,7 @@ REST_FRAMEWORK = {
         "anon": "100/day",
         "registration": "10/hour",   # matches RegistrationThrottle.scope in views.py
         "login": "20/hour",          # matches LoginThrottle.scope in views.py
+        "emergency_contact_response": "30/hour",  # matches scope in access/views.py
     },
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
@@ -290,4 +291,4 @@ ACCESS_REQUEST_RESPONSE_TIMEOUT_MINUTES = config("ACCESS_REQUEST_RESPONSE_TIMEOU
 PATIENT_CARD_VALIDITY_DAYS = config("PATIENT_CARD_VALIDITY_DAYS", cast=int, default=365)
 EMERGENCY_CONTACT_RESPONSE_RATE = config("EMERGENCY_CONTACT_RESPONSE_RATE", default="30/hour")
 EMERGENCY_CONTACT_RESPONSE_TIMEOUT_MINUTES = config("EMERGENCY_CONTACT_RESPONSE_TIMEOUT_MINUTES", cast=int, default=15)
-MAX_EMERGENCY_CONTACTS = config("MAX_EMERGENCY_CONTACTS", cast=int, default=5)
+MAX_EMERGENCY_CONTACTS = config("MAX_EMERGENCY_CONTACTS", cast=int, default=5)

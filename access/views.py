@@ -2,6 +2,8 @@ from django.conf import settings
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework import throttling
@@ -63,6 +65,38 @@ def revoke_visit_grants(visit, revoked_by=AccessGrant.RevokedBy.SYSTEM):
         grant.revoke(revoked_by)
 
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Access Requests"],
+    operation_summary="Create an access request",
+    operation_description="""
+    Creates an access request for a patient record at the authenticated hospital.
+
+    **Authentication:** Required.
+
+    **Required Role:** Hospital Staff.
+    """,
+    security=[{"Bearer": []}],
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=["visit", "request_type", "access_level"],
+        properties={
+            "visit": openapi.Schema(type=openapi.TYPE_STRING, description="Visit ID for the access request."),
+            "request_type": openapi.Schema(type=openapi.TYPE_STRING, description="Request type, for example emergency or standard."),
+            "access_level": openapi.Schema(type=openapi.TYPE_STRING, description="Requested access level."),
+        },
+        example={
+            "visit": "d5f1d0dd-1b9b-4b0d-879d-5ff6b53df0ff",
+            "request_type": "routine",
+            "access_level": "limited"
+        }
+    ),
+    responses={
+        201: openapi.Response(description="Access request created successfully"),
+        400: openapi.Response(description="Invalid request payload"),
+        403: openapi.Response(description="Permission denied")
+    }
+)
 @api_view(["POST"])
 @permission_classes([IsHospitalStaff, IsFromVerifiedHospital])
 def create_access_request(request):
@@ -102,6 +136,22 @@ def create_access_request(request):
     )
 
 
+@swagger_auto_schema(
+    method="get",
+    tags=["Access Requests"],
+    operation_summary="List my access requests",
+    operation_description="""
+    Returns access requests associated with the authenticated patient.
+
+    **Authentication:** Required.
+
+    **Required Role:** Patient.
+    """,
+    security=[{"Bearer": []}],
+    responses={
+        200: openapi.Response(description="Access requests retrieved successfully")
+    }
+)
 @api_view(["GET"])
 @permission_classes([IsPatient])
 def my_access_requests(request):
@@ -110,6 +160,32 @@ def my_access_requests(request):
     return success_response(AccessRequestSerializer(requests, many=True).data, "Access requests retrieved successfully.")
 
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Access Requests"],
+    operation_summary="Approve an access request",
+    operation_description="""
+    Approves a pending access request using the patient-provided code.
+
+    **Authentication:** Required.
+
+    **Required Role:** Patient.
+    """,
+    security=[{"Bearer": []}],
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=["code"],
+        properties={
+            "code": openapi.Schema(type=openapi.TYPE_STRING, description="Approval code issued with the access request.")
+        },
+        example={"code": "482195"}
+    ),
+    responses={
+        201: openapi.Response(description="Access approved successfully"),
+        400: openapi.Response(description="Incorrect approval code"),
+        403: openapi.Response(description="Permission denied")
+    }
+)
 @api_view(["POST"])
 @permission_classes([IsPatient])
 def approve_access_request(request, request_id):
@@ -130,6 +206,23 @@ def approve_access_request(request, request_id):
     return success_response(AccessGrantSerializer(grant).data, "Access approved successfully.", status.HTTP_201_CREATED)
 
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Access Requests"],
+    operation_summary="Deny an access request",
+    operation_description="""
+    Denies a pending access request from a hospital.
+
+    **Authentication:** Required.
+
+    **Required Role:** Patient.
+    """,
+    security=[{"Bearer": []}],
+    responses={
+        200: openapi.Response(description="Access request denied successfully"),
+        403: openapi.Response(description="Permission denied")
+    }
+)
 @api_view(["POST"])
 @permission_classes([IsPatient])
 def deny_access_request(request, request_id):
@@ -147,6 +240,20 @@ def deny_access_request(request, request_id):
     return success_response(AccessRequestSerializer(access_request).data, "Access request denied successfully.")
 
 
+@swagger_auto_schema(
+    method="get",
+    tags=["Access Grants"],
+    operation_summary="List active access grants",
+    operation_description="""
+    Returns all active grants available to the authenticated patient or verified hospital staff member.
+
+    **Authentication:** Required.
+    """,
+    security=[{"Bearer": []}],
+    responses={
+        200: openapi.Response(description="Active access grants retrieved successfully")
+    }
+)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def active_grants(request):
@@ -168,6 +275,23 @@ def active_grants(request):
     return success_response(AccessGrantSerializer(grants, many=True).data, "Active access grants retrieved successfully.")
 
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Access Grants"],
+    operation_summary="Revoke an access grant",
+    operation_description="""
+    Revokes a previously approved access grant for the authenticated patient.
+
+    **Authentication:** Required.
+
+    **Required Role:** Patient.
+    """,
+    security=[{"Bearer": []}],
+    responses={
+        200: openapi.Response(description="Access grant revoked successfully"),
+        403: openapi.Response(description="Permission denied")
+    }
+)
 @api_view(["POST"])
 @permission_classes([IsPatient])
 def revoke_grant(request, grant_id):
@@ -181,6 +305,23 @@ def revoke_grant(request, grant_id):
     return success_response(AccessGrantSerializer(grant).data, "Access grant revoked successfully.")
 
 
+@swagger_auto_schema(
+    method="get",
+    tags=["Hospital Patients"],
+    operation_summary="View a patient profile within an active access grant",
+    operation_description="""
+    Retrieves a patient's profile details for a hospital staff member who has an active grant.
+
+    **Authentication:** Required.
+
+    **Required Role:** Hospital Staff.
+    """,
+    security=[{"Bearer": []}],
+    responses={
+        200: openapi.Response(description="Patient profile retrieved successfully"),
+        403: openapi.Response(description="Active access grant required")
+    }
+)
 @api_view(["GET"])
 @permission_classes([IsHospitalStaff, IsFromVerifiedHospital])
 def hospital_patient_profile(request, patient_id):
@@ -207,6 +348,8 @@ def hospital_patient_profile(request, patient_id):
     return success_response(data, "Patient profile retrieved successfully.")
 
 
+@swagger_auto_schema(method="get", tags=["Hospital Patients"], operation_summary="List a patient's records", operation_description="""Retrieves a patient's clinical records when the staff member has an active access grant.""", security=[{"Bearer": []}], responses={200: openapi.Response(description="Patient records retrieved successfully")})
+@swagger_auto_schema(method="post", tags=["Hospital Patients"], operation_summary="Add a record to a patient's chart", operation_description="""Adds a clinical record for a patient within an active hospital visit.""", security=[{"Bearer": []}], request_body=openapi.Schema(type=openapi.TYPE_OBJECT, required=["entry_type", "description"], properties={"entry_type": openapi.Schema(type=openapi.TYPE_STRING, description="Clinical entry type."), "description": openapi.Schema(type=openapi.TYPE_STRING, description="Clinical note or record description.")}, responses={201: openapi.Response(description="Patient medical record added successfully"), 403: openapi.Response(description="Permission denied")}))
 @api_view(["GET", "POST"])
 @permission_classes([IsHospitalStaff, IsFromVerifiedHospital])
 def hospital_patient_records(request, patient_id):
@@ -248,6 +391,22 @@ def hospital_patient_records(request, patient_id):
     return success_response(MedicalRecordSerializer(record).data, "Patient medical record added successfully.", status.HTTP_201_CREATED)
 
 
+@swagger_auto_schema(
+    method="get",
+    tags=["Access Grants"],
+    operation_summary="List active grants for the hospital",
+    operation_description="""
+    Returns all currently active access grants for the authenticated hospital staff's hospital.
+
+    **Authentication:** Required.
+
+    **Required Role:** Hospital Staff.
+    """,
+    security=[{"Bearer": []}],
+    responses={
+        200: openapi.Response(description="Hospital active access grants retrieved successfully")
+    }
+)
 @api_view(["GET"])
 @permission_classes([IsHospitalStaff, IsFromVerifiedHospital])
 def hospital_active_grants(request):
@@ -259,6 +418,8 @@ def hospital_active_grants(request):
     return success_response(AccessGrantSerializer(grants, many=True).data, "Hospital active access grants retrieved successfully.")
 
 
+@swagger_auto_schema(method="get", tags=["Emergency Contacts"], operation_summary="List emergency contacts", operation_description="""Returns the authenticated patient's active emergency contacts.""", security=[{"Bearer": []}], responses={200: openapi.Response(description="Emergency contacts retrieved successfully")})
+@swagger_auto_schema(method="post", tags=["Emergency Contacts"], operation_summary="Add an emergency contact", operation_description="""Adds a new emergency contact for the authenticated patient.""", security=[{"Bearer": []}], request_body=openapi.Schema(type=openapi.TYPE_OBJECT, required=["full_name", "relationship", "phone_number"], properties={"full_name": openapi.Schema(type=openapi.TYPE_STRING, description="Emergency contact full name."), "relationship": openapi.Schema(type=openapi.TYPE_STRING, description="Relationship to the patient."), "phone_number": openapi.Schema(type=openapi.TYPE_STRING, description="Emergency contact phone number."), "priority_order": openapi.Schema(type=openapi.TYPE_INTEGER, description="Priority order for the contact.")}, responses={201: openapi.Response(description="Emergency contact added successfully"), 400: openapi.Response(description="Invalid contact details")}) )
 @api_view(["GET", "POST"])
 @permission_classes([IsPatient])
 def emergency_contacts(request):
@@ -279,6 +440,22 @@ def emergency_contacts(request):
     return success_response(EmergencyContactSerializer(contact).data, "Emergency contact added successfully.", status.HTTP_201_CREATED)
 
 
+@swagger_auto_schema(
+    method="delete",
+    tags=["Emergency Contacts"],
+    operation_summary="Remove an emergency contact",
+    operation_description="""
+    Deactivates an emergency contact for the authenticated patient.
+
+    **Authentication:** Required.
+
+    **Required Role:** Patient.
+    """,
+    security=[{"Bearer": []}],
+    responses={
+        200: openapi.Response(description="Emergency contact removed successfully")
+    }
+)
 @api_view(["DELETE"])
 @permission_classes([IsPatient])
 def delete_emergency_contact(request, contact_id):
@@ -291,6 +468,29 @@ def delete_emergency_contact(request, contact_id):
     return success_response(None, "Emergency contact removed successfully.")
 
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Emergency Contacts"],
+    operation_summary="Respond to an emergency-contact escalation",
+    operation_description="""
+    Allows a registered emergency contact to approve or deny an emergency access request using the supplied response token.
+
+    **Authentication:** Not required.
+    """,
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=["request_id", "response_token", "decision"],
+        properties={
+            "request_id": openapi.Schema(type=openapi.TYPE_STRING, description="Access request identifier."),
+            "response_token": openapi.Schema(type=openapi.TYPE_STRING, description="Emergency contact response token."),
+            "decision": openapi.Schema(type=openapi.TYPE_STRING, description="Either approve or deny.")
+        }
+    ),
+    responses={
+        200: openapi.Response(description="Emergency access response processed successfully"),
+        403: openapi.Response(description="Invalid or unauthorized emergency response")
+    }
+)
 @api_view(["POST"])
 @permission_classes([AllowAny])
 @throttle_classes([EmergencyContactResponseThrottle])
@@ -333,6 +533,21 @@ def emergency_contact_respond(request, contact_id):
     return success_response(AccessGrantSerializer(grant).data, "Emergency access approved successfully.", status.HTTP_201_CREATED)
 
 
+@swagger_auto_schema(
+    method="get",
+    tags=["Emergency Escalations"],
+    operation_summary="Get escalation details",
+    operation_description="""
+    Returns the current status of an emergency escalation for the authorized patient, staff member, or contact.
+
+    **Authentication:** Required.
+    """,
+    security=[{"Bearer": []}],
+    responses={
+        200: openapi.Response(description="Escalation status retrieved successfully"),
+        403: openapi.Response(description="You are not involved in this escalation")
+    }
+)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def escalation_detail(request, escalation_id):

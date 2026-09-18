@@ -1,5 +1,7 @@
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework import status
@@ -42,12 +44,30 @@ def _issue_card(request, patient):
     return success_response(PatientCardSerializer(card).data, "Patient card issued successfully.", status.HTTP_201_CREATED)
 
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Patient Cards"],
+    operation_summary="Issue a patient card",
+    operation_description="""
+    Issues a new active patient card for the authenticated patient if they do not already have one.
+
+    **Authentication:** Required.
+
+    **Required Role:** Patient.
+    """,
+    security=[{"Bearer": []}],
+    responses={
+        201: openapi.Response(description="Patient card issued successfully")
+    }
+)
 @api_view(["POST"])
 @permission_classes([IsPatient])
 def create_card(request):
     return _issue_card(request, patient_for_request(request))
 
 
+@swagger_auto_schema(method="get", tags=["Patient Cards"], operation_summary="Get my patient card", operation_description="""Returns the authenticated patient's current active patient card.""", security=[{"Bearer": []}], responses={200: openapi.Response(description="Patient card retrieved successfully")})
+@swagger_auto_schema(method="post", tags=["Patient Cards"], operation_summary="Issue or refresh a patient card", operation_description="""Issues a new patient card when no active card exists.""", security=[{"Bearer": []}], responses={201: openapi.Response(description="Patient card issued successfully")})
 @api_view(["GET", "POST"])
 @permission_classes([IsPatient])
 def card(request):
@@ -61,6 +81,23 @@ def card(request):
     return _issue_card(request, patient)
 
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Patient Cards"],
+    operation_summary="Renew a patient card",
+    operation_description="""
+    Extends the authenticated patient's current active patient card.
+
+    **Authentication:** Required.
+
+    **Required Role:** Patient.
+    """,
+    security=[{"Bearer": []}],
+    responses={
+        200: openapi.Response(description="Patient card renewed successfully"),
+        400: openapi.Response(description="No active patient card exists")
+    }
+)
 @api_view(["POST"])
 @permission_classes([IsPatient])
 def renew_card(request):
@@ -76,6 +113,22 @@ def renew_card(request):
     return success_response(PatientCardSerializer(card).data, "Patient card renewed successfully.")
 
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Patient Cards"],
+    operation_summary="Revoke a patient card",
+    operation_description="""
+    Revokes the authenticated patient's active patient card.
+
+    **Authentication:** Required.
+
+    **Required Role:** Patient.
+    """,
+    security=[{"Bearer": []}],
+    responses={
+        200: openapi.Response(description="Patient card revoked successfully")
+    }
+)
 @api_view(["POST"])
 @permission_classes([IsPatient])
 def revoke_card(request):
@@ -89,6 +142,30 @@ def revoke_card(request):
     return success_response(PatientCardSerializer(card).data, "Patient card revoked successfully.")
 
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Patient Cards"],
+    operation_summary="Lookup a patient card",
+    operation_description="""
+    Identifies a patient using a patient card reference and confirms whether the card is valid.
+
+    **Authentication:** Required.
+
+    **Required Role:** Hospital Staff.
+    """,
+    security=[{"Bearer": []}],
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=["card_reference"],
+        properties={
+            "card_reference": openapi.Schema(type=openapi.TYPE_STRING, description="Patient card reference code.")
+        }
+    ),
+    responses={
+        200: openapi.Response(description="Patient identified successfully"),
+        400: openapi.Response(description="Card is invalid or expired")
+    }
+)
 @api_view(["POST"])
 @permission_classes([IsHospitalStaff, IsFromVerifiedHospital])
 def lookup_card(request):

@@ -1,4 +1,6 @@
 from django.shortcuts import get_object_or_404
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -21,6 +23,8 @@ def staff_for_request(request):
     return get_object_or_404(HospitalStaffProfile.objects.select_related("hospital"), user=request.user)
 
 
+@swagger_auto_schema(method="get", tags=["Medical Records"], operation_summary="List my medical records", operation_description="""Returns all medical records associated with the authenticated patient.""", security=[{"Bearer": []}], responses={200: openapi.Response(description="Medical records retrieved successfully")})
+@swagger_auto_schema(method="post", tags=["Medical Records"], operation_summary="Create a new medical record", operation_description="""Creates a new medical record entry for the authenticated patient.""", security=[{"Bearer": []}], request_body=openapi.Schema(type=openapi.TYPE_OBJECT, required=["entry_type", "description"], properties={"entry_type": openapi.Schema(type=openapi.TYPE_STRING, description="Entry type for the record."), "description": openapi.Schema(type=openapi.TYPE_STRING, description="Clinical description of the record.")}, responses={201: openapi.Response(description="Medical record added successfully")}))
 @api_view(["GET", "POST"])
 @permission_classes([IsPatient])
 def my_records(request):
@@ -37,6 +41,23 @@ def my_records(request):
     return success_response(MedicalRecordSerializer(record).data, "Medical record added successfully.", status.HTTP_201_CREATED)
 
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Medical Records"],
+    operation_summary="Verify a medical record",
+    operation_description="""
+    Verifies a patient's medical record as a doctor at the associated hospital.
+
+    **Authentication:** Required.
+
+    **Required Role:** Doctor.
+    """,
+    security=[{"Bearer": []}],
+    responses={
+        201: openapi.Response(description="Medical record verified successfully"),
+        403: openapi.Response(description="Permission denied")
+    }
+)
 @api_view(["POST"])
 @permission_classes([IsDoctor, IsFromVerifiedHospital])
 def verify_record(request, record_id):
@@ -76,6 +97,28 @@ def verify_record(request, record_id):
     return success_response(MedicalRecordSerializer(verified).data, "Medical record verified successfully.", status.HTTP_201_CREATED)
 
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Medical Records"],
+    operation_summary="Supersede an existing medical record",
+    operation_description="""
+    Creates a new medical record linked to an existing one without editing the original entry.
+
+    **Authentication:** Required.
+    """,
+    security=[{"Bearer": []}],
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            "entry_type": openapi.Schema(type=openapi.TYPE_STRING, description="Optional new record type."),
+            "description": openapi.Schema(type=openapi.TYPE_STRING, description="New clinical description for the superseding record.")
+        }
+    ),
+    responses={
+        201: openapi.Response(description="Medical record superseded successfully"),
+        403: openapi.Response(description="Permission denied")
+    }
+)
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
 def supersede_record(request, record_id):
@@ -115,6 +158,22 @@ def supersede_record(request, record_id):
     return success_response(MedicalRecordSerializer(record).data, "Medical record superseded successfully.", status.HTTP_201_CREATED)
 
 
+@swagger_auto_schema(
+    method="get",
+    tags=["Medical Records"],
+    operation_summary="Get my consolidated medical record",
+    operation_description="""
+    Returns the patient's complete medical record as a consolidated bundle of entries, visits, vitals, and medications.
+
+    **Authentication:** Required.
+
+    **Required Role:** Patient.
+    """,
+    security=[{"Bearer": []}],
+    responses={
+        200: openapi.Response(description="Medical record retrieved successfully")
+    }
+)
 @api_view(["GET"])
 @permission_classes([IsPatient])
 def my_medical_record(request):

@@ -51,9 +51,14 @@ from .serializers import (
     HospitalStaffProfileSerializer,
     PatientProfileSerializer,
     PatientRegistrationSerializer,
+    HospitalStaffListSerializer,
+    HospitalVerificationSerializer,
 )
 from django.conf import settings
 from django.contrib.auth import authenticate
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 # ---------------------------------------------------------------------------
 # THROTTLES
@@ -205,70 +210,30 @@ class LoginThrottle(throttling.AnonRateThrottle):
 @permission_classes([permissions.AllowAny])
 @throttle_classes([RegistrationThrottle])
 def register_patient(request):
+    """Create a self-managed patient account and its profile.
 
-    data = request.data
+    The phone number is required because it is the primary lookup
+    identifier hospitals use to find a patient. Finding a patient this
+    way never by itself grants access to their medical records.
+    """
+    serializer = PatientRegistrationSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    profile = serializer.save()
 
-    email = data.get('email')
-    password = data.get('password')
-    phone_number = data.get('phone_number')
-    date_of_birth = data.get('date_of_birth')
-    gender = data.get('gender')
-    blood_type = data.get('blood_type')
-    full_name = data.get('full_name')
-
-    if not is_correct_format(date_of_birth):
-        return Response({
-            'status': False,
-            'message': 'Date of birth must be provided in form YYYY-MM-DD'
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    if not (email and password and phone_number and date_of_birth and gender):
-        return Response({
-            'status': False,
-            'message': 'Email, password, phone_number, date of birth and gender are required'
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    if not is_valid_email(email):
-        return Response({
-            "status": False,
-            "message": "Invalid email format."
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    if User.objects.filter(email=email).exists():
-        return Response({
-            'status': False,
-            "message": "Email is already in use"
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    if User.objects.filter(phone_number=phone_number).exists():
-        return Response({
-            'status': False,
-            "message": "Email is already in use"
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    user = User.objects.create_user(
-        email = email,
-        password = password,
-        date_of_birth = date_of_birth,
-        user_type = User.UserType.PATIENT,
-        gender = gender
+    log_event(
+        "patient_registered",
+        user_id=profile.user,
+        request=request,
+        patient_id=profile.id,
+        target_type="patient",
+        target_id=profile.id,
     )
 
-    # create patient profile
-    PatientProfile.objects.create(
-        user = user,
-        full_name = full_name,
-        blood_type = blood_type,
-        account_type = PatientProfile.AccountType.SELF_MANAGED,
-
+    return success_response(
+        UserSerializer(profile.user).data,
+        "Account created successfully.",
+        status.HTTP_201_CREATED,
     )
-
-    serializer = UserSerializer(user)
-    return Response({
-        'status': True,
-        'message': 'Account created successfully',
-        'data': serializer.data
-    }, status=status.HTTP_201_CREATED)
 
 @swagger_auto_schema(
     method="post",
@@ -381,41 +346,30 @@ def register_patient(request):
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated, IsPatient])
 def register_dependent(request):
-    guardian_profile = request.user.patient_profile
+    """Create a dependent patient profile under the logged-in patient."""
+    guardian_profile = get_object_or_404(PatientProfile, user=request.user)
 
-    data = request.data
+    serializer = DependentRegistrationSerializer(
+        data=request.data,
+        context={"guardian_profile": guardian_profile},
+    )
+    serializer.is_valid(raise_exception=True)
+    patient = serializer.save()
 
-    full_name = data.get('full_name')
-    date_of_birth = data.get('date_of_birth')
-    gender = data.get('gender')
-    blood_type = data.get('blood_type', None)
-
-    if not (full_name and date_of_birth and gender):
-        return Response({
-            'status': False,
-            'message': 'Full name, date of birth, and gender'
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    if not is_correct_format(date_of_birth):
-        return Response({
-            'status': False,
-            'message': 'Date of birth must be provided in form YYYY-MM-DD'
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    patient = PatientProfile.objects.create(
-        full_name = full_name,
-        date_of_birth = date_of_birth,
-        gender = gender,
-        blood_type = blood_type,
-        guardian = guardian_profile
+    log_event(
+        "dependent_registered",
+        user_id=request.user,
+        request=request,
+        patient_id=patient.id,
+        target_type="patient",
+        target_id=patient.id,
     )
 
-    serializer = PatientProfileSerializer(patient)
-    return Response({
-        'status': True,
-        'message': 'Dependent created successfully',
-        'data': serializer.data
-    }, status=status.HTTP_201_CREATED)
+    return success_response(
+        PatientProfileSerializer(patient).data,
+        "Dependent created successfully.",
+        status.HTTP_201_CREATED,
+    )
 
 @swagger_auto_schema(
     method="post",
@@ -560,106 +514,31 @@ def register_dependent(request):
 @permission_classes([permissions.AllowAny])
 @throttle_classes([RegistrationThrottle])
 def register_hospital(request):
+    """Register a hospital in PENDING state with its first admin."""
+    serializer = HospitalRegistrationSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    hospital = serializer.save()
 
-    data = request.data
+    admin_user = User.objects.get(email=serializer.validated_data["admin_email"])
+    staff = HospitalStaffProfile.objects.get(user=admin_user)
 
-    hospital_name = data.get('hospital_name')
-
-    # unique 
-    registration_number = data.get('registration_number')
-    phermc_number = data.get('phermc_number')
-    cac_number = data.get('cac_number')
-
-    address = data.get('address')
-    admin_email = data.get('admin_email')
-    admin_password = data.get('admin_password')
-    admin_full_name = data.get('admin_full_name')
-
-    if not (
-        hospital_name and registration_number and phermc_number 
-        and cac_number and address and admin_email and admin_password 
-        and admin_full_name
-    ):
-        return Response({
-            'status': False,
-            'message': 'All fields are required'
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    if not is_valid_email(admin_email):
-        return Response({
-            "status": False,
-            "message": "Invalid email format."
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    if len(admin_password) < 5:
-        return Response({
-            'status': False,
-            'message': 'Password must be at least  characters'
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    if User.objects.filter(email=admin_email).exists():
-        return Response({
-            'status': False,
-            'message': 'Email is already in use'
-        }, status=status.HTTP_404_NOT_FOUND)    
-
-    if Hospital.objects.filter(name=hospital_name).exists():
-        return Response({
-            'status': False,
-            'message': 'Registration number already in use'
-        }, status=status.HTTP_400_BAD_REQUEST) 
-
-    if Hospital.objects.filter(registration_number=registration_number).exists():
-        return Response({
-            'status': False,
-            'message': 'Registration number already in use'
-        }, status=status.HTTP_400_BAD_REQUEST) 
-
-    if Hospital.objects.filter(phermc_number=phermc_number).exists():
-        return Response({
-            'status': False,
-            'message': 'Registration number already in use'
-        }, status=status.HTTP_400_BAD_REQUEST) 
-
-    if Hospital.objects.filter(cac_number=cac_number).exists():
-        return Response({
-            'status': False,
-            'message': 'CAC number already in use'
-        }, status=status.HTTP_400_BAD_REQUEST) 
-
-    # create hospital
-    hospital = Hospital(
-        name = hospital_name,
-        registration_number = registration_number,
-        phermc_number = phermc_number,
-        cac_number = cac_number,
-        address = address,
-        verification_status=Hospital.VerificationStatus.PENDING,
+    log_event(
+        "hospital_registered",
+        user_id=admin_user,
+        request=request,
+        hospital_id=hospital.id,
+        target_type="hospital",
+        target_id=hospital.id,
     )
 
-    hospital.save()
-
-    # create an admin user for the hospital
-    admin_user = User.objects.create_user(
-        email = admin_email,
-        password = admin_password,
-        user_type=User.UserType.HOSPITAL_STAFF,
+    return success_response(
+        {
+            "hospital": HospitalSerializer(hospital).data,
+            "admin": HospitalStaffProfileSerializer(staff).data,
+        },
+        "Hospital registered successfully. Verification is pending.",
+        status.HTTP_201_CREATED,
     )
-
-    # create a profile for the hospital
-    HospitalStaffProfile.objects.create(
-        user=admin_user,
-        hospital=hospital,
-        full_name = admin_full_name,
-        role = HospitalStaffProfile.Role.ADMIN,
-    )
-
-    serializer = HospitalSerializer(hospital)
-    return Response({
-        'status': True,
-        'message': 'Hospital created successfully',
-        'data': serializer.data
-    }, status=status.HTTP_201_CREATED)
 
 @swagger_auto_schema(
     method="post",
@@ -782,141 +661,252 @@ def register_hospital(request):
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated, IsHospitalAdmin])
 def create_hospital_staff(request):
+    """Create hospital staff with a server-generated temporary password."""
+    hospital = get_object_or_404(Hospital, pk=request.user.staff_profile.hospital_id)
 
-    hospital = request.user.staff_profile.hospital
+    role = request.data.get("role")
+    if role not in (HospitalStaffProfile.Role.DOCTOR, HospitalStaffProfile.Role.NURSE):
+        return error_response(
+            "Role must either be 'doctor' or 'nurse'.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            code="VALIDATION_ERROR",
+        )
 
-    data = request.data
-    email = data.get('email')
-    full_name = data.get('full_name')
-    role = data.get('role')
-    professional_license_number = data.get('professional_license_number')
-
-    if not (
-        email and full_name and role and professional_license_number
-    ):
-        return Response({
-            'status': False,
-            'message': 'All fields are required'
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    if not is_valid_email(email):
-        return Response({
-            "status": False,
-            "message": "Invalid email format."
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    if not (
-        role == HospitalStaffProfile.Role.DOCTOR or
-        role == HospitalStaffProfile.Role.NURSE 
-    ):
-        return Response({
-            'status': False,
-            'message': "Role must either be 'doctor' or 'nurse'"
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    temp_password = generate_temporary_password()
-
-    # create user profile
-    user = User.objects.create_user(
-        email = email,
-        password = temp_password,
-        user_type = User.UserType.HOSPITAL_STAFF,
-        must_change_password = True,
+    serializer = HospitalStaffCreateSerializer(
+        data=request.data,
+        context={"hospital": hospital},
     )
+    serializer.is_valid(raise_exception=True)
+    staff_profile = serializer.save()
+    temp_password = getattr(staff_profile, "_temp_password", None)
 
-    # create staff profile for user
-    staff_profile = HospitalStaffProfile.objects.create(
-        user = user,
-        hospital = hospital,
-        full_name= full_name,
-        role = role,
-        professional_license_number = professional_license_number,
-    )
-    
     # email the temporary password to the user
-    email_message = EmailMessage(
-        'Temporary Staff Password',
-        f'Your staff account has been created under hospital {hospital.name} and you temporary password is:\n\n{temp_password}\n\nMake sure to change this password later on',
-        settings.EMAIL_HOST_USER,
-        [email]
-    )
-    email_message.fail_silently = True
-    email_message.send()   
+    if temp_password:
+        email_message = EmailMessage(
+            'Temporary Staff Password',
+            f'Your staff account has been created under hospital {hospital.name} and you temporary password is:\n\n{temp_password}\n\nMake sure to change this password later on',
+            settings.EMAIL_HOST_USER,
+            [staff_profile.user.email]
+        )
+        email_message.fail_silently = True
+        email_message.send()
 
-    serializer = HospitalStaffProfileSerializer(staff_profile)
-    return Response({
-        'status': True,
-        'message': 'Staff created successfully',
-        'data': serializer.data
-    }, status=status.HTTP_201_CREATED)
+    log_event(
+        "staff_created",
+        user_id=request.user,
+        request=request,
+        hospital_id=hospital.id,
+        target_type="hospital_staff",
+        target_id=staff_profile.id,
+        created_staff_user_id=staff_profile.user_id,
+        role=staff_profile.role,
+    )
+
+    return success_response(
+        HospitalStaffProfileSerializer(staff_profile).data,
+        "Staff created successfully.",
+        status.HTTP_201_CREATED,
+    )
 
 
 # ---------------------------------------------------------------------------
 # LOGIN / LOGOUT
 # ---------------------------------------------------------------------------
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Authentication"],
+    operation_summary="Log in a user",
+    operation_description="""
+    Authenticates a user using either an email address or phone number and returns JWT tokens.
+
+    **Authentication:** Not required.
+    """,
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=["identifier", "password"],
+        properties={
+            "identifier": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Either the user's email address or 11-digit phone number."
+            ),
+            "password": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_PASSWORD,
+                description="User password."
+            ),
+        },
+        example={
+            "identifier": "john.patient@example.com",
+            "password": "SecurePassword123!"
+        }
+    ),
+    responses={
+        200: openapi.Response(
+            description="Login successful",
+            examples={
+                "application/json": {
+                    "status": True,
+                    "message": "Login successful.",
+                    "data": {
+                        "user": {
+                            "id": "550e8400-e29b-41d4-a716-446655440000",
+                            "email": "john.patient@example.com",
+                            "user_type": "patient"
+                        },
+                        "tokens": {
+                            "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                            "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                        }
+                    }
+                }
+            }
+        ),
+        400: openapi.Response(
+            description="Invalid credentials or missing fields",
+            examples={
+                "application/json": {
+                    "status": False,
+                    "message": "Invalid credentials provided."
+                }
+            }
+        ),
+        429: openapi.Response(
+            description="Too many login attempts",
+            examples={
+                "application/json": {
+                    "detail": "Request was throttled."
+                }
+            }
+        ),
+    }
+)
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 @throttle_classes([LoginThrottle])
 def login_view(request):
-
+    """Authenticate with email or phone number and return JWT tokens."""
     data = request.data
-    identifier = data.get('identifier')
-    password = data.get('password')
+    identifier = str(data.get('identifier') or '').strip()
+    password = data.get('password') or ''
+
+    if not identifier or not password:
+        return error_response(
+            "Identifier and password are required.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            code="VALIDATION_ERROR",
+        )
 
     user = None
 
     # identifier is email
     if '@' in identifier:
-        email = email.strip().lower()
-        
+        email = identifier.strip().lower()
+
         if not is_valid_email(email):
-            return Response({
-                "status": False,
-                "message": "Invalid email format."
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "Invalid email format.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="VALIDATION_ERROR",
+            )
 
         user = authenticate(username=email, password=password)
     else:
         # else identifier is phone number
         if not identifier.isdigit():
-            return Response({
-                'status': False,
-                'message': 'You must enter either a phone number or valid email address'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "You must enter either a phone number or valid email address.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="VALIDATION_ERROR",
+            )
 
         # make sure user enters correct length of phone number
         if len(identifier) != 11:
-            return Response({
-                'status': False,
-                'message': 'Phone numbers must be 11 digits long'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "Phone numbers must be 11 digits long.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="VALIDATION_ERROR",
+            )
 
         # attempt to authenticate the user with phone number
-    
         _user = User.objects.filter(phone_number=identifier).first()
         if _user and _user.check_password(password):
             user = _user
 
-    if user is not None:        
-        serializer = UserSerializer(user)
-        return Response({
-            'status': True,
-            'message': 'Login successful',
-            'data': {
-                'user': serializer.data,
-                'tokens': user.auth_tokens()
+    if user is None or not user.is_active:
+        return error_response(
+            "Invalid credentials provided.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            code="AUTHENTICATION_FAILED",
+        )
+
+    log_event(
+        "login_success",
+        user_id=user,
+        request=request,
+        patient_id=getattr(getattr(user, "patient_profile", None), "id", None),
+        hospital_id=getattr(getattr(user, "staff_profile", None), "hospital_id", None),
+        target_type="user",
+        target_id=user.id,
+    )
+
+    return success_response(
+        {
+            'user': UserSerializer(user).data,
+            'tokens': user.auth_tokens()
+        },
+        "Login successful.",
+    )
+
+
+
+@swagger_auto_schema(
+    method="post",
+    tags=["Authentication"],
+    operation_summary="Refresh an access token",
+    operation_description="""
+    Exchanges a valid refresh token for a new access token.
+
+    **Authentication:** Not required for the refresh call itself, but a valid refresh token must be supplied.
+    """,
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=["refresh"],
+        properties={
+            "refresh": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Refresh token issued during login."
+            )
+        },
+        example={
+            "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        }
+    ),
+    responses={
+        200: openapi.Response(
+            description="Token refreshed successfully",
+            examples={
+                "application/json": {
+                    "status": True,
+                    "message": "Token refreshed successfully",
+                    "data": {
+                        "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                        "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    }
+                }
             }
-        })
-
-    return Response({
-        'status': False,
-        'message': 'Invalid credentials provided'
-    }, status=status.HTTP_400_BAD_REQUEST)
-   
-
-
-
+        ),
+        401: openapi.Response(
+            description="Refresh token is invalid or expired",
+            examples={
+                "application/json": {
+                    "status": False,
+                    "message": "Token is invalid or has expired"
+                }
+            }
+        ),
+    }
+)
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def refresh_token_view(request):
@@ -943,6 +933,41 @@ def refresh_token_view(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@swagger_auto_schema(
+    method="post",
+    tags=["Authentication"],
+    operation_summary="Log out the current user",
+    operation_description="""
+    Invalidates the provided refresh token to log the user out.
+
+    **Authentication:** Required. The user must be authenticated to call this endpoint.
+    """,
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=["refresh"],
+        properties={
+            "refresh": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="Refresh token to blacklist and invalidate."
+            )
+        },
+        example={
+            "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        }
+    ),
+    responses={
+        204: openapi.Response(description="User logged out successfully"),
+        400: openapi.Response(
+            description="Refresh token missing or invalid",
+            examples={
+                "application/json": {
+                    "status": False,
+                    "error": "Refresh token is required."
+                }
+            }
+        ),
+    }
+)
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
 def logout_view(request):
@@ -971,6 +996,40 @@ def logout_view(request):
 # "ME" — profile retrieval, works for either user type
 # ---------------------------------------------------------------------------
 
+@swagger_auto_schema(
+    method="get",
+    tags=["Profile"],
+    operation_summary="Get the current authenticated user's profile",
+    operation_description="""
+    Returns the authenticated user's profile payload, shaped according to whether the account is a patient or hospital staff member.
+
+    **Authentication:** Required.
+    """,
+    responses={
+        200: openapi.Response(
+            description="Current profile retrieved successfully",
+            examples={
+                "application/json": {
+                    "status": True,
+                    "message": "Profile retrieved successfully",
+                    "data": {
+                        "id": "550e8400-e29b-41d4-a716-446655440000",
+                        "full_name": "John Patient",
+                        "user_type": "patient"
+                    }
+                }
+            }
+        ),
+        401: openapi.Response(
+            description="Authentication credentials were not provided or token is invalid",
+            examples={
+                "application/json": {
+                    "detail": "Authentication credentials were not provided."
+                }
+            }
+        ),
+    }
+)
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def me_view(request):
@@ -991,3 +1050,280 @@ def me_view(request):
     }, status=status.HTTP_200_OK)
 
 
+# ---------------------------------------------------------------------------
+# HOSPITAL DIRECTORY / VERIFICATION / STAFF MANAGEMENT
+# ---------------------------------------------------------------------------
+
+@swagger_auto_schema(
+    method="get",
+    tags=["Hospitals"],
+    operation_summary="List verified hospitals",
+    operation_description="""
+    Returns all verified hospitals in the public directory.
+
+    An optional query string parameter `q` can be used to filter by hospital name.
+
+    **Authentication:** Not required.
+    """,
+    manual_parameters=[
+        openapi.Parameter(
+            "q",
+            openapi.IN_QUERY,
+            description="Optional hospital-name search filter.",
+            type=openapi.TYPE_STRING,
+        )
+    ],
+    responses={
+        200: openapi.Response(
+            description="Verified hospitals retrieved successfully",
+            examples={
+                "application/json": {
+                    "status": True,
+                    "message": "Hospital directory retrieved successfully.",
+                    "data": [
+                        {
+                            "id": "850e8400-e29b-41d4-a716-446655440000",
+                            "name": "Central Medical Hospital",
+                            "verification_status": "verified"
+                        }
+                    ]
+                }
+            }
+        )
+    }
+)
+@api_view(["GET"])
+@permission_classes([permissions.AllowAny])
+def hospital_directory(request):
+    """Public directory containing verified hospitals only."""
+    queryset = Hospital.objects.filter(
+        verification_status=Hospital.VerificationStatus.VERIFIED
+    ).order_by("name")
+    query = request.query_params.get("q", "").strip()
+    if query:
+        queryset = queryset.filter(name__icontains=query)
+    serializer = HospitalSerializer(queryset, many=True)
+    return success_response(serializer.data, "Hospital directory retrieved successfully.")
+
+
+@swagger_auto_schema(
+    method="get",
+    tags=["Hospitals"],
+    operation_summary="Get a verified hospital by ID",
+    operation_description="""
+    Returns the public information for a verified hospital.
+
+    **Authentication:** Not required.
+    """,
+    responses={
+        200: openapi.Response(
+            description="Hospital retrieved successfully",
+            examples={
+                "application/json": {
+                    "status": True,
+                    "message": "Hospital retrieved successfully.",
+                    "data": {
+                        "id": "850e8400-e29b-41d4-a716-446655440000",
+                        "name": "Central Medical Hospital",
+                        "verification_status": "verified"
+                    }
+                }
+            }
+        ),
+        404: openapi.Response(
+            description="Hospital does not exist or is not verified",
+            examples={
+                "application/json": {
+                    "status": False,
+                    "message": "Not found."
+                }
+            }
+        ),
+    }
+)
+@api_view(["GET"])
+@permission_classes([permissions.AllowAny])
+def hospital_detail(request, hospital_id):
+    hospital = get_object_or_404(
+        Hospital,
+        pk=hospital_id,
+        verification_status=Hospital.VerificationStatus.VERIFIED,
+    )
+    return success_response(HospitalSerializer(hospital).data, "Hospital retrieved successfully.")
+
+
+@swagger_auto_schema(
+    method="post",
+    tags=["Hospitals"],
+    operation_summary="Verify or reject a hospital registration",
+    operation_description="""
+    Allows a platform administrator to change a hospital's verification status.
+
+    **Authentication:** Required.
+
+    **Required Role:** Platform Admin.
+    """,
+    security=[{"Bearer": []}],
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=["status"],
+        properties={
+            "status": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                enum=["verified", "rejected", "pending"],
+                description="The new verification status to apply to the hospital."
+            )
+        },
+        example={
+            "status": "verified"
+        }
+    ),
+    responses={
+        200: openapi.Response(
+            description="Hospital verification status updated successfully",
+            examples={
+                "application/json": {
+                    "status": True,
+                    "message": "Hospital verification status updated successfully.",
+                    "data": {
+                        "id": "850e8400-e29b-41d4-a716-446655440000",
+                        "verification_status": "verified"
+                    }
+                }
+            }
+        ),
+        403: openapi.Response(
+            description="Authenticated user is not a platform admin",
+            examples={
+                "application/json": {
+                    "detail": "Only a platform admin can verify hospitals."
+                }
+            }
+        ),
+    }
+)
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def verify_hospital(request, hospital_id):
+    """Platform-admin manual verification of a hospital's registration."""
+    if request.user.user_type != User.UserType.PLATFORM_ADMIN:
+        raise PermissionDenied("Only a platform admin can verify hospitals.")
+    hospital = get_object_or_404(Hospital, pk=hospital_id)
+    serializer = HospitalVerificationSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    new_status = serializer.validated_data["status"]
+    hospital.verification_status = new_status
+    hospital.verified_at = timezone.now() if new_status == Hospital.VerificationStatus.VERIFIED else None
+    hospital.save(update_fields=["verification_status", "verified_at"])
+    log_event(
+        "hospital_verification_changed", user_id=request.user, request=request,
+        hospital_id=hospital.id, target_type="hospital", target_id=hospital.id,
+        verification_status=new_status,
+    )
+    return success_response(HospitalSerializer(hospital).data, "Hospital verification status updated successfully.")
+
+
+@swagger_auto_schema(
+    method="get",
+    tags=["Hospital Staff"],
+    operation_summary="List staff within a hospital",
+    operation_description="""
+    Lists the staff members belonging to the authenticated hospital administrator's hospital.
+
+    **Authentication:** Required.
+
+    **Required Role:** Hospital Admin.
+    """,
+    security=[{"Bearer": []}],
+    responses={
+        200: openapi.Response(
+            description="Hospital staff retrieved successfully",
+            examples={
+                "application/json": {
+                    "status": True,
+                    "message": "Hospital staff retrieved successfully.",
+                    "data": [
+                        {
+                            "id": "960e8400-e29b-41d4-a716-446655440000",
+                            "full_name": "Dr. Sarah Johnson",
+                            "role": "doctor"
+                        }
+                    ]
+                }
+            }
+        ),
+        403: openapi.Response(
+            description="Authenticated user is not a hospital admin",
+            examples={
+                "application/json": {
+                    "detail": "You do not have permission to perform this action."
+                }
+            }
+        ),
+    }
+)
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated, IsHospitalAdmin])
+def list_hospital_staff(request, hospital_id=None):
+    """List staff at the requesting admin's own hospital."""
+    admin_staff = request.user.staff_profile
+    if hospital_id and str(admin_staff.hospital_id) != str(hospital_id):
+        raise PermissionDenied("You can only manage staff in your own hospital.")
+    staff = HospitalStaffProfile.objects.select_related("user", "hospital").filter(
+        hospital=admin_staff.hospital
+    ).order_by("full_name")
+    return success_response(HospitalStaffListSerializer(staff, many=True).data, "Hospital staff retrieved successfully.")
+
+
+@swagger_auto_schema(
+    method="delete",
+    tags=["Hospital Staff"],
+    operation_summary="Remove a hospital staff member's access",
+    operation_description="""
+    Deactivates a staff member's login without deleting their records or hospital profile.
+
+    **Authentication:** Required.
+
+    **Required Role:** Hospital Admin.
+    """,
+    security=[{"Bearer": []}],
+    responses={
+        200: openapi.Response(
+            description="Staff access removed successfully",
+            examples={
+                "application/json": {
+                    "status": True,
+                    "message": "Staff access removed successfully."
+                }
+            }
+        ),
+        403: openapi.Response(
+            description="Authenticated user is not allowed to remove this staff member",
+            examples={
+                "application/json": {
+                    "detail": "You do not have permission to perform this action."
+                }
+            }
+        ),
+    }
+)
+@api_view(["DELETE"])
+@permission_classes([permissions.IsAuthenticated, IsHospitalAdmin])
+def remove_hospital_staff(request, staff_id):
+    """Deactivate a staff member's login access (does not delete their records)."""
+    admin_staff = request.user.staff_profile
+    staff = get_object_or_404(HospitalStaffProfile.objects.select_related("user", "hospital"), pk=staff_id)
+    if staff.hospital_id != admin_staff.hospital_id:
+        raise PermissionDenied("You can only manage staff in your own hospital.")
+    if staff.user_id == request.user.id:
+        raise ValidationError("A hospital admin cannot remove their own account.")
+    if not staff.user.is_active:
+        return success_response(None, "Staff account is already inactive.")
+    staff.user.is_active = False
+    staff.user.save(update_fields=["is_active"])
+    log_event(
+        "staff_access_removed", user_id=request.user, request=request,
+        hospital_id=staff.hospital_id, target_type="hospital_staff", target_id=staff.id,
+        removed_staff_user_id=staff.user_id, role=staff.role,
+    )
+    return success_response(None, "Staff access removed successfully.")

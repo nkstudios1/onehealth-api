@@ -52,11 +52,11 @@ class CustomUserManager(BaseUserManager):
             raise ValueError("Superuser must have is_superuser=True.")
 
         # Local import avoids a circular import between models.py and managers.py
-        from .models import CustomUser
+        from .models import User
 
         return self.create_user(
             email=email,
             password=password,
-            user_type=CustomUser.UserType.PLATFORM_ADMIN,
+            user_type=User.UserType.PLATFORM_ADMIN,
             **extra_fields,
         )
