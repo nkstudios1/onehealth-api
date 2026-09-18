@@ -43,7 +43,7 @@ class VisitAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
             if not hospital:
                 return form
             if "patient" in form.base_fields:
-                form.base_fields["patient"].queryset = PatientProfile.objects.filter(visits__hospital=hospital).distinct()
+                form.base_fields["patient"].queryset = PatientProfile.objects.filter().distinct()
             if "hospital" in form.base_fields:
                 form.base_fields["hospital"].queryset = Hospital.objects.filter(pk=hospital.id)
                 form.base_fields["hospital"].initial = hospital.id

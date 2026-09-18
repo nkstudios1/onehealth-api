@@ -6,6 +6,8 @@ from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from django.conf import settings
 
+from cards.views import patient_card_qr_page
+
 schema_view = get_schema_view(
    openapi.Info(
       title="One health API",
@@ -21,6 +23,7 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
+    path("admin/patient-card-qr/", admin.site.admin_view(patient_card_qr_page), name="patient-card-qr"),
     path("admin/", admin.site.urls),
 
     # --- Auth module ---

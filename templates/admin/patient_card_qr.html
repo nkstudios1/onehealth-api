@@ -1,0 +1,31 @@
+{% extends "admin/base_site.html" %}
+
+{% block title %}Patient access QR{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; Patient access QR
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="module" style="max-width: 720px; margin: 24px auto; padding: 24px; background: #fff; border: 1px solid #d0d7de; border-radius: 12px;">
+  <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #57606a; margin-bottom: 12px;">patient-card-qr</div>
+  <h2 style="margin-top:0;">Your patient access QR code</h2>
+  <p>Scan this QR code to open the access request form for your profile. Staff can request access without searching for you manually.</p>
+
+  <div style="display:flex; flex-wrap:wrap; align-items:center; gap:24px; margin-top:24px;">
+    <div style="padding:16px; border:1px solid #d0d7de; border-radius:8px; background:#fff;">
+      <img src="{{ qr_data_url }}" alt="Patient access QR code" style="display:block; width:260px; height:260px; object-fit:contain;" />
+    </div>
+
+    <div style="flex:1; min-width:250px;">
+      <p><strong>Patient:</strong> {{ patient.full_name }}</p>
+      <p><strong>Card reference:</strong> {{ card.card_reference }}</p>
+      <p><strong>Access link:</strong></p>
+      <div style="word-break:break-all; background:#f6f8fa; border:1px solid #d0d7de; border-radius:8px; padding:10px 12px; margin-top:8px;">{{ access_url }}</div>
+    </div>
+  </div>
+</div>
+{% endblock %}

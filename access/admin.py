@@ -126,10 +126,19 @@ class AccessRequestAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
                 form.base_fields["hospital"].queryset = __import__("users.models", fromlist=["Hospital"]).Hospital.objects.filter(pk=hospital.id)
                 form.base_fields["hospital"].initial = hospital.id
                 form.base_fields["hospital"].disabled = True
+            patient_queryset = __import__("users.models", fromlist=["PatientProfile"]).PatientProfile.objects.filter(visits__hospital=hospital).distinct()
             if "patient" in form.base_fields:
-                form.base_fields["patient"].queryset = __import__("users.models", fromlist=["PatientProfile"]).PatientProfile.objects.filter(visits__hospital=hospital).distinct()
+                qr_patient_id = request.GET.get("patient_id")
+                if qr_patient_id:
+                    patient_queryset = patient_queryset.filter(pk=qr_patient_id)
+                    form.base_fields["patient"].initial = __import__("uuid", fromlist=["UUID"]).UUID(qr_patient_id)
+                    form.base_fields["patient"].disabled = True
+                form.base_fields["patient"].queryset = patient_queryset
             if "visit" in form.base_fields:
-                form.base_fields["visit"].queryset = __import__("visits.models", fromlist=["Visit"]).Visit.objects.filter(hospital=hospital)
+                visit_queryset = __import__("visits.models", fromlist=["Visit"]).Visit.objects.filter(hospital=hospital)
+                if request.GET.get("patient_id"):
+                    visit_queryset = visit_queryset.filter(patient_id=request.GET.get("patient_id"))
+                form.base_fields["visit"].queryset = visit_queryset
             if "requested_by_staff" in form.base_fields:
                 form.base_fields["requested_by_staff"].queryset = __import__("users.models", fromlist=["HospitalStaffProfile"]).HospitalStaffProfile.objects.filter(hospital=hospital)
                 form.base_fields["requested_by_staff"].initial = staff.pk if staff else None

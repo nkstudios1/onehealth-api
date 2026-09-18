@@ -1,4 +1,8 @@
-from django.shortcuts import get_object_or_404
+import base64
+import io
+import qrcode
+from django.core.exceptions import PermissionDenied
+from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
@@ -30,6 +34,41 @@ def active_card_for_patient(patient):
         card.revoke()
         card = None
     return card
+
+
+def patient_card_qr_page(request):
+    if not getattr(request.user, "is_authenticated", False):
+        raise PermissionDenied("Authentication required.")
+    if getattr(request.user, "user_type", None) != "patient":
+        raise PermissionDenied("Only patients can access their QR code page.")
+
+    patient = get_object_or_404(__import__("users.models", fromlist=["PatientProfile"]).PatientProfile, user=request.user)
+    card = active_card_for_patient(patient)
+    if not card:
+        card = PatientCard.objects.create(patient=patient)
+
+    base_url = "http://127.0.0.1:8000"
+    access_url = f"{base_url}/admin/access/accessrequest/add/?patient_id={patient.id}"
+    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr.add_data(access_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    qr_data_url = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+    return render(
+        request,
+        "admin/patient_card_qr.html",
+        {
+            "title": "Patient access QR",
+            "patient": patient,
+            "card": card,
+            "access_url": access_url,
+            "qr_data_url": qr_data_url,
+        },
+    )
 
 
 def _issue_card(request, patient):

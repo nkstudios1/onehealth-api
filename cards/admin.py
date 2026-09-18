@@ -40,6 +40,25 @@ class PatientCardAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
             return qs.filter(patient__visits__hospital=hospital).distinct()
         return qs.none()
 
+    def has_view_permission(self, request, obj=None):
+        if is_platform_admin(request.user):
+            return True
+        if request.user.user_type == User.UserType.PATIENT:
+            if obj is None:
+                return True
+            return obj.patient.user_id == request.user.id
+        if request.user.user_type in (User.UserType.HOSPITAL_STAFF, User.UserType.HOSPITAL_ADMIN):
+            staff = current_staff(request.user)
+            hospital = getattr(staff, "hospital", None) if staff else None
+            if not hospital and request.user.user_type == User.UserType.HOSPITAL_ADMIN:
+                hospital = __import__("users.models", fromlist=["Hospital"]).Hospital.objects.filter(admin=request.user).first()
+            if not hospital:
+                return False
+            if obj is None:
+                return True
+            return obj.patient.visits.filter(hospital_id=hospital.id).exists()
+        return False
+
     def has_add_permission(self, request):
         return is_platform_admin(request.user)
 

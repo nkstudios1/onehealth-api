@@ -6,6 +6,7 @@ from django.test import RequestFactory, TestCase
 
 from access.admin import AccessRequestAdmin
 from access.models import AccessGrant, AccessRequest
+from cards.admin import PatientCardAdmin
 from cards.models import PatientCard
 from records.admin import MedicalRecordAdmin
 from records.models import MedicalRecord
@@ -302,6 +303,83 @@ class HospitalStaffCanCreateClinicalRecordsTests(TestCase):
 
         self.assertTrue(access_request_admin.has_add_permission(staff_request))
         self.assertFalse(access_request_admin.has_add_permission(patient_request))
+
+
+class PatientCardDashboardAndQrFlowTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.site = AdminSite()
+
+        self.patient_user = User.objects.create_user(
+            email="patientqr@demo.test",
+            password="StrongPass123!",
+            phone_number="+2348000000200",
+            user_type=User.UserType.PATIENT,
+            is_staff=True,
+        )
+        self.patient_profile = PatientProfile.objects.create(
+            user=self.patient_user,
+            full_name="QR Patient",
+            date_of_birth=date(1992, 2, 2),
+            account_type=PatientProfile.AccountType.SELF_MANAGED,
+        )
+        self.card = PatientCard.objects.create(patient=self.patient_profile)
+
+        self.doctor_user = User.objects.create_user(
+            email="qrdoctor@demo.test",
+            password="StrongPass123!",
+            phone_number="+2348000000201",
+            user_type=User.UserType.HOSPITAL_STAFF,
+            is_staff=True,
+        )
+        self.hospital = Hospital.objects.create(
+            name="QR Hospital",
+            registration_number="HOSP-QR-001",
+            verification_status=Hospital.VerificationStatus.VERIFIED,
+        )
+        self.doctor_profile = HospitalStaffProfile.objects.create(
+            user=self.doctor_user,
+            hospital=self.hospital,
+            full_name="Dr. QR",
+            role=HospitalStaffProfile.Role.DOCTOR,
+            professional_license_number="LIC-QR-001",
+        )
+        self.visit = Visit.objects.create(
+            patient=self.patient_profile,
+            hospital=self.hospital,
+            created_by_staff=self.doctor_profile,
+        )
+
+    def test_patient_can_view_own_card_model_and_queryset(self):
+        request = self.factory.get("/")
+        request.user = self.patient_user
+
+        patient_card_admin = PatientCardAdmin(PatientCard, self.site)
+        self.assertTrue(patient_card_admin.has_view_permission(request, self.card))
+        self.assertIn(self.card, patient_card_admin.get_queryset(request))
+
+    def test_access_request_form_uses_qr_patient_id_for_default_selection(self):
+        request = self.factory.get("/", {"patient_id": str(self.patient_profile.id)})
+        request.user = self.doctor_user
+
+        access_request_admin = AccessRequestAdmin(AccessRequest, self.site)
+        form = access_request_admin.get_form(request)
+
+        self.assertEqual(form.base_fields["patient"].initial, self.patient_profile.id)
+        self.assertTrue(form.base_fields["patient"].disabled)
+        self.assertIn(self.patient_profile.id, set(form.base_fields["patient"].queryset.values_list("id", flat=True)))
+
+    def test_patient_qr_page_is_only_visible_to_patient_accounts(self):
+        patient_client = self.client
+        patient_client.force_login(self.patient_user)
+        response = patient_client.get("/admin/patient-card-qr/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "patient-card-qr")
+
+        staff_client = self.client
+        staff_client.force_login(self.doctor_user)
+        response = staff_client.get("/admin/patient-card-qr/")
+        self.assertEqual(response.status_code, 403)
 
 
 class HospitalStaffAndHospitalAdminPermissionTests(TestCase):
