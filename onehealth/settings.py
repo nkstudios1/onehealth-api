@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
+    "corsheaders",  # CORS support for frontend
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist", 
@@ -49,6 +50,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # CORS - must be before CommonMiddleware
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -291,4 +293,49 @@ ACCESS_REQUEST_RESPONSE_TIMEOUT_MINUTES = config("ACCESS_REQUEST_RESPONSE_TIMEOU
 PATIENT_CARD_VALIDITY_DAYS = config("PATIENT_CARD_VALIDITY_DAYS", cast=int, default=365)
 EMERGENCY_CONTACT_RESPONSE_RATE = config("EMERGENCY_CONTACT_RESPONSE_RATE", default="30/hour")
 EMERGENCY_CONTACT_RESPONSE_TIMEOUT_MINUTES = config("EMERGENCY_CONTACT_RESPONSE_TIMEOUT_MINUTES", cast=int, default=15)
-MAX_EMERGENCY_CONTACTS = config("MAX_EMERGENCY_CONTACTS", cast=int, default=5)
+MAX_EMERGENCY_CONTACTS = config("MAX_EMERGENCY_CONTACTS", cast=int, default=5)
+
+# ============================================================================
+# CORS CONFIGURATION
+# ============================================================================
+# Allow frontend to make requests to the API from different origins
+
+# In development, allow localhost
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # Vite dev server
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",  # Alternative port
+    "http://127.0.0.1:3000",
+]
+
+# In production, add your deployed frontend URL to CORS_ALLOWED_ORIGINS
+# Example: "https://onehealth.com", "https://app.onehealth.com"
+
+# Allow credentials (cookies, authorization headers)
+CORS_ALLOW_CREDENTIALS = True
+
+# Allow common headers
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+# Allow all HTTP methods
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+# How long to cache preflight requests (in seconds)
+CORS_PREFLIGHT_MAX_AGE = 86400  # 24 hours
