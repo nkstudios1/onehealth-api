@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: onehealth-api
+    env: python
+    region: oregon
+    plan: free
+    branch: stable
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: |
+      python manage.py migrate --no-input
+      gunicorn onehealth.wsgi:application --bind 0.0.0.0:$PORT --workers 2
+    healthCheckPath: /api/v1/
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DEBUG
+        value: false
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_PORT
+        sync: false
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: EMAIL_USE_TLS
+        value: true
+      - key: EMAIL_USE_SSL
+        value: false
