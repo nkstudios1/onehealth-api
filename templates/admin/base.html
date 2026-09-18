@@ -77,9 +77,9 @@
 
                 {% get_top_menu user request.current_app|default:"admin" as top_menu %}
                 {% if request.user.is_authenticated %}
-                    {% if request.user.is_superuser or request.user.user_type == 'hospital_admin' or request.user.staff_profile.role == 'admin' %}
+                    {% if request.user.user_type == 'patient' %}
                         {% for link in top_menu %}
-                            {% if link.name == 'Register patient' or link.name == 'Register hospital' or link.name == 'Register hospital staff' %}
+                            {% if link.name == 'Patient Card' %}
                                 <li class="nav-item d-none d-sm-inline-block{% if link.children %} dropdown{% endif %}">
                                     {% if link.children %}
                                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
@@ -95,6 +95,23 @@
                                     {% endif %}
                                 </li>
                             {% endif %}
+                        {% endfor %}
+                    {% elif request.user.is_superuser or request.user.user_type == 'hospital_admin' or request.user.user_type == 'hospital_staff' and request.user.staff_profile.role == 'admin' %}
+                        {% for link in top_menu %}
+                            <li class="nav-item d-none d-sm-inline-block{% if link.children %} dropdown{% endif %}">
+                                {% if link.children %}
+                                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                        {{ link.name }}
+                                    </a>
+                                    <div class="dropdown-menu">
+                                        {% for child in link.children %}
+                                            <a class="dropdown-item" href="{{ child.url }}" {% if link.new_window %}target="_blank"{% endif %}>{{ child.name }}</a>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <a href="{{ link.url }}" class="nav-link" {% if link.new_window %}target="_blank"{% endif %}>{{ link.name }}</a>
+                                {% endif %}
+                            </li>
                         {% endfor %}
                     {% elif request.user.user_type == 'hospital_staff' %}
                         {% for link in top_menu %}
