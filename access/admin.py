@@ -8,6 +8,7 @@ from users.models import User, HospitalStaffProfile
 from import_export.admin import ImportExportModelAdmin
 from .models import AccessGrant, AccessRequest, EmergencyContact, EmergencyEscalation
 
+# TestPassword123!
 
 def is_platform_admin(user):
     return bool(user and user.is_active and (user.is_superuser or user.user_type == User.UserType.PLATFORM_ADMIN))
