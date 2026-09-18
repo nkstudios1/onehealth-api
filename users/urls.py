@@ -6,6 +6,11 @@ from . import views
 #   path("api/v1/auth/", include("users.urls"))
 
 urlpatterns = [
+    # --- Public HTML registration pages ---
+    path("register/patient-page/", views.patient_registration_page, name="patient-registration-page"),
+    path("register/hospital-page/", views.hospital_registration_page, name="hospital-registration-page"),
+    path("register/staff-page/", views.staff_registration_page, name="staff-registration-page"),
+
     # --- Registration ---
     path("register/patient/", views.register_patient, name="register-patient"),
     path("register/hospital/", views.register_hospital, name="register-hospital"),

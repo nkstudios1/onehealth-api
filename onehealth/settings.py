@@ -23,6 +23,7 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS').split(',')
 # Application definition
 
 INSTALLED_APPS = [
+    'jazzmin',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -62,7 +63,7 @@ ROOT_URLCONF = 'onehealth.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -151,6 +152,10 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # after the database has real data in it. Do not skip this.
 # ----------------------------------------------------------------------------
 AUTH_USER_MODEL = "users.User"
+AUTHENTICATION_BACKENDS = [
+    "users.backends.EmailOrPhoneBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -291,4 +296,137 @@ ACCESS_REQUEST_RESPONSE_TIMEOUT_MINUTES = config("ACCESS_REQUEST_RESPONSE_TIMEOU
 PATIENT_CARD_VALIDITY_DAYS = config("PATIENT_CARD_VALIDITY_DAYS", cast=int, default=365)
 EMERGENCY_CONTACT_RESPONSE_RATE = config("EMERGENCY_CONTACT_RESPONSE_RATE", default="30/hour")
 EMERGENCY_CONTACT_RESPONSE_TIMEOUT_MINUTES = config("EMERGENCY_CONTACT_RESPONSE_TIMEOUT_MINUTES", cast=int, default=15)
-MAX_EMERGENCY_CONTACTS = config("MAX_EMERGENCY_CONTACTS", cast=int, default=5)
+MAX_EMERGENCY_CONTACTS = config("MAX_EMERGENCY_CONTACTS", cast=int, default=5)
+
+JAZZMIN_UI_TWEAKS = {
+    "navbar_small_text": True,
+    "footer_small_text": False,
+    "body_small_text": False,
+    "brand_small_text": False,
+    "brand_colour": False,
+    "accent": "accent-olive",
+    "navbar": "navbar-white navbar-light",
+    "no_navbar_border": False,
+    "navbar_fixed": True,
+    "layout_boxed": False,
+    "footer_fixed": False,
+    "sidebar_fixed": False,
+    "sidebar": "sidebar-dark-primary",
+    "sidebar_nav_small_text": False,
+    "sidebar_disable_expand": False,
+    "sidebar_nav_child_indent": False,
+    "sidebar_nav_compact_style": False,
+    "sidebar_nav_legacy_style": False,
+    "sidebar_nav_flat_style": False,
+    "theme": "default",
+    # "dark_mode_theme": None,
+    'default_theme_mode': 'light',
+    "button_classes": {
+        "primary": "btn-outline-primary",
+        "secondary": "btn-outline-secondary",
+        "info": "btn-info",
+        "warning": "btn-warning",
+        "danger": "btn-danger",
+        "success": "btn-success"
+    },
+    "actions_sticky_top": False
+}
+
+JAZZMIN_SETTINGS = {
+    "site_title": "OneHealth",
+    "site_header": "OneHealth Admin",
+    "site_brand": "OneHealth",
+    "copyright": "OneHealth",
+
+    "show_ui_builder": False,
+
+    "default_icon_parents": "fas fa-folder",
+    "default_icon_children": "fas fa-circle",
+
+    "icons": {
+
+        # =========================
+        # USERS
+        # =========================
+        "Users": "fas fa-users",
+        "Users.User": "fas fa-user",
+
+        # =========================
+        # HOSPITALS
+        # =========================
+        "Hospitals": "fas fa-hospital",
+        "Hospitals.Hospital": "fas fa-hospital",
+
+        # =========================
+        # PATIENTS
+        # =========================
+        "Patients": "fas fa-user-injured",
+        "Patients.PatientProfile": "fas fa-id-card",
+
+        # =========================
+        # HOSPITAL STAFF
+        # =========================
+        "Hospital Staff": "fas fa-user-md",
+        "Hospital Staff.HospitalStaffProfile": "fas fa-user-doctor",
+
+        # =========================
+        # VISITS
+        # =========================
+        "Visits": "fas fa-notes-medical",
+        "Visits.Visit": "fas fa-stethoscope",
+
+        # =========================
+        # MEDICAL RECORDS
+        # =========================
+        "Medical Records": "fas fa-file-medical",
+        "Medical Records.MedicalRecord": "fas fa-file-medical-alt",
+
+        # =========================
+        # VITALS
+        # =========================
+        "Vitals": "fas fa-heartbeat",
+        "Vitals.Vital": "fas fa-heartbeat",
+
+        # =========================
+        # MEDICATIONS
+        # =========================
+        "Medications": "fas fa-pills",
+        "Medications.Medication": "fas fa-pills",
+
+        # =========================
+        # EMERGENCY CONTACTS
+        # =========================
+        "Emergency Contacts": "fas fa-phone-square-alt",
+        "Emergency Contacts.EmergencyContact": "fas fa-phone-alt",
+
+        # =========================
+        # ACCESS REQUESTS
+        # =========================
+        "Access Requests": "fas fa-key",
+        "Access Requests.AccessRequest": "fas fa-unlock-alt",
+
+        # =========================
+        # ACCESS GRANTS
+        # =========================
+        "Access Grants": "fas fa-user-shield",
+        "Access Grants.AccessGrant": "fas fa-shield-alt",
+
+        # =========================
+        # EMERGENCY ESCALATIONS
+        # =========================
+        "Emergency Escalations": "fas fa-exclamation-triangle",
+        "Emergency Escalations.EmergencyEscalation": "fas fa-ambulance",
+
+        # =========================
+        # PATIENT CARDS
+        # =========================
+        "Patient Cards": "fas fa-id-card",
+        "Patient Cards.PatientCard": "fas fa-address-card",
+
+        # =========================
+        # AUDIT LOGS
+        # =========================
+        "Audit Logs": "fas fa-history",
+        "Audit Logs.AuditLog": "fas fa-clipboard-list",
+    },
+}

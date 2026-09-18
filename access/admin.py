@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from users.admin import RoleAwareModelAdmin
 from users.models import User, HospitalStaffProfile
-
+from import_export.admin import ImportExportModelAdmin
 from .models import AccessGrant, AccessRequest, EmergencyContact, EmergencyEscalation
 
 
@@ -18,7 +18,7 @@ def current_staff(user):
 
 
 @admin.register(EmergencyContact)
-class EmergencyContactAdmin(RoleAwareModelAdmin):
+class EmergencyContactAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
     list_display = ("full_name", "patient", "relationship", "phone_number", "priority_order", "is_active", "created_at")
     list_filter = ("is_active", "patient__account_type")
     search_fields = ("full_name", "patient__full_name", "phone_number", "email")
@@ -94,7 +94,7 @@ class EmergencyContactAdmin(RoleAwareModelAdmin):
 
 
 @admin.register(AccessRequest)
-class AccessRequestAdmin(RoleAwareModelAdmin):
+class AccessRequestAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
     list_display = ("id", "patient", "hospital", "request_type", "access_level", "status", "requested_by_staff", "created_at")
     list_filter = ("request_type", "access_level", "status", "hospital")
     search_fields = ("id", "patient__full_name", "hospital__name", "requested_by_staff__full_name", "code")
@@ -211,7 +211,7 @@ class AccessRequestAdmin(RoleAwareModelAdmin):
 
 
 @admin.register(AccessGrant)
-class AccessGrantAdmin(RoleAwareModelAdmin):
+class AccessGrantAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
     list_display = ("id", "access_request", "access_level", "granted_by", "granted_at", "revoked_at", "revoked_by")
     list_filter = ("access_level", "granted_by", "revoked_by")
     search_fields = ("id", "access_request__patient__full_name", "access_request__hospital__name")
@@ -252,7 +252,7 @@ class AccessGrantAdmin(RoleAwareModelAdmin):
 
 
 @admin.register(EmergencyEscalation)
-class EmergencyEscalationAdmin(RoleAwareModelAdmin):
+class EmergencyEscalationAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
     list_display = ("id", "access_request", "stage", "triggered_at", "resolved_at", "resolved_by")
     list_filter = ("stage",)
     search_fields = ("id", "access_request__patient__full_name", "access_request__hospital__name", "resolved_by")

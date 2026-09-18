@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Q
 from django.utils import timezone
-
+from import_export.admin import ImportExportModelAdmin
 from users.admin import RoleAwareModelAdmin
 from users.models import User
 
@@ -18,7 +18,7 @@ def current_staff(user):
 
 
 @admin.register(MedicalRecord)
-class MedicalRecordAdmin(RoleAwareModelAdmin):
+class MedicalRecordAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
     list_display = (
         "id",
         "patient",

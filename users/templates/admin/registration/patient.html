@@ -1,0 +1,83 @@
+{% extends 'admin/registration/base.html' %}
+
+{% block title %}Patient Registration{% endblock %}
+{% block page_title %}Patient Registration{% endblock %}
+{% block header_title %}Patient Registration{% endblock %}
+{% block header_subtitle %}Create your personal patient account.{% endblock %}
+
+{% block inner_content %}
+    <form method="post" novalidate>
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <div class="alert" role="alert">
+                {% for error in form.non_field_errors %}
+                    <div>{{ error }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <div class="form-grid">
+            <div class="field full-width">
+                {{ form.email.label_tag }}
+                {{ form.email }}
+                {% if form.email.errors %}
+                    <ul class="errorlist">{% for error in form.email.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field">
+                {{ form.password.label_tag }}
+                {{ form.password }}
+                {% if form.password.errors %}
+                    <ul class="errorlist">{% for error in form.password.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field">
+                {{ form.phone_number.label_tag }}
+                {{ form.phone_number }}
+                {% if form.phone_number.errors %}
+                    <ul class="errorlist">{% for error in form.phone_number.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field full-width">
+                {{ form.full_name.label_tag }}
+                {{ form.full_name }}
+                {% if form.full_name.errors %}
+                    <ul class="errorlist">{% for error in form.full_name.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field">
+                {{ form.date_of_birth.label_tag }}
+                {{ form.date_of_birth }}
+                {% if form.date_of_birth.errors %}
+                    <ul class="errorlist">{% for error in form.date_of_birth.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field">
+                {{ form.gender.label_tag }}
+                {{ form.gender }}
+                {% if form.gender.errors %}
+                    <ul class="errorlist">{% for error in form.gender.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field full-width">
+                {{ form.blood_type.label_tag }}
+                {{ form.blood_type }}
+                {% if form.blood_type.errors %}
+                    <ul class="errorlist">{% for error in form.blood_type.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="inline-links">
+            <button class="btn" type="submit">Create patient account</button>
+            <a class="link-button" href="/admin/login/">Back to admin login</a>
+        </div>
+    </form>
+{% endblock %}

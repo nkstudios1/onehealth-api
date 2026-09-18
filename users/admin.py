@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.utils import timezone
-
+from import_export.admin import ImportExportModelAdmin
 from .models import User, Hospital, HospitalStaffProfile, PatientProfile
 
 
@@ -51,7 +51,7 @@ class RoleAwareModelAdmin(admin.ModelAdmin):
 
 
 @admin.register(User)
-class UserAdmin(DjangoUserAdmin, RoleAwareModelAdmin):
+class UserAdmin(ImportExportModelAdmin, DjangoUserAdmin, RoleAwareModelAdmin):
     ordering = ["email"]
     list_display = ["email", "full_name", "user_type", "is_active", "must_change_password", "date_joined"]
     list_filter = ["user_type", "is_active", "must_change_password"]
@@ -147,7 +147,7 @@ class UserAdmin(DjangoUserAdmin, RoleAwareModelAdmin):
 
 
 @admin.register(Hospital)
-class HospitalAdmin(RoleAwareModelAdmin):
+class HospitalAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
     list_display = ["name", "admin", "registration_number", "verification_status", "created_at"]
     list_filter = ["verification_status"]
     search_fields = ["name", "registration_number", "address"]
@@ -218,7 +218,7 @@ class HospitalAdmin(RoleAwareModelAdmin):
 
 
 @admin.register(PatientProfile)
-class PatientProfileAdmin(RoleAwareModelAdmin):
+class PatientProfileAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
     list_display = ["full_name", "user", "account_type", "date_of_birth", "created_at"]
     list_filter = ["account_type", "gender"]
     search_fields = ["full_name", "user__email", "user__phone_number"]
@@ -303,7 +303,7 @@ class PatientProfileAdmin(RoleAwareModelAdmin):
 
 
 @admin.register(HospitalStaffProfile)
-class HospitalStaffProfileAdmin(RoleAwareModelAdmin):
+class HospitalStaffProfileAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
     list_display = ["full_name", "hospital", "role", "professional_license_number", "created_at"]
     list_filter = ["role", "hospital"]
     search_fields = ["full_name", "user__email", "professional_license_number"]

@@ -1,0 +1,83 @@
+{% extends 'admin/registration/base.html' %}
+
+{% block title %}Staff Registration{% endblock %}
+{% block page_title %}Staff Registration{% endblock %}
+{% block header_title %}Staff Registration{% endblock %}
+{% block header_subtitle %}Create a hospital staff account for your organization.{% endblock %}
+
+{% block inner_content %}
+    <form method="post" novalidate>
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <div class="alert" role="alert">
+                {% for error in form.non_field_errors %}
+                    <div>{{ error }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <div class="form-grid">
+            <div class="field full-width">
+                {{ form.hospital.label_tag }}
+                {{ form.hospital }}
+                {% if form.hospital.errors %}
+                    <ul class="errorlist">{% for error in form.hospital.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field">
+                {{ form.email.label_tag }}
+                {{ form.email }}
+                {% if form.email.errors %}
+                    <ul class="errorlist">{% for error in form.email.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field">
+                {{ form.password.label_tag }}
+                {{ form.password }}
+                {% if form.password.errors %}
+                    <ul class="errorlist">{% for error in form.password.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field">
+                {{ form.phone_number.label_tag }}
+                {{ form.phone_number }}
+                {% if form.phone_number.errors %}
+                    <ul class="errorlist">{% for error in form.phone_number.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field full-width">
+                {{ form.full_name.label_tag }}
+                {{ form.full_name }}
+                {% if form.full_name.errors %}
+                    <ul class="errorlist">{% for error in form.full_name.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field">
+                {{ form.role.label_tag }}
+                {{ form.role }}
+                {% if form.role.errors %}
+                    <ul class="errorlist">{% for error in form.role.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field">
+                {{ form.professional_license_number.label_tag }}
+                {{ form.professional_license_number }}
+                {% if form.professional_license_number.errors %}
+                    <ul class="errorlist">{% for error in form.professional_license_number.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="inline-links">
+            <button class="btn" type="submit">Create staff account</button>
+            <a class="link-button" href="/admin/login/">Back to admin login</a>
+        </div>
+    </form>
+{% endblock %}

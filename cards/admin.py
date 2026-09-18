@@ -4,7 +4,7 @@ from django.utils import timezone
 
 from users.admin import RoleAwareModelAdmin
 from users.models import User
-
+from import_export.admin import ImportExportModelAdmin
 from .models import PatientCard
 
 
@@ -17,7 +17,7 @@ def current_staff(user):
 
 
 @admin.register(PatientCard)
-class PatientCardAdmin(RoleAwareModelAdmin):
+class PatientCardAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
     list_display = ("card_reference", "patient", "status", "issued_at", "renewed_at", "expires_at")
     list_filter = ("status",)
     search_fields = ("card_reference", "patient__full_name", "patient__user__email")

@@ -1,0 +1,99 @@
+{% extends 'admin/registration/base.html' %}
+
+{% block title %}Hospital Registration{% endblock %}
+{% block page_title %}Hospital Registration{% endblock %}
+{% block header_title %}Hospital Registration{% endblock %}
+{% block header_subtitle %}Register your hospital and create the first hospital admin account.{% endblock %}
+
+{% block inner_content %}
+    <form method="post" novalidate>
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <div class="alert" role="alert">
+                {% for error in form.non_field_errors %}
+                    <div>{{ error }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <div class="form-grid">
+            <div class="field full-width">
+                {{ form.hospital_name.label_tag }}
+                {{ form.hospital_name }}
+                {% if form.hospital_name.errors %}
+                    <ul class="errorlist">{% for error in form.hospital_name.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field">
+                {{ form.registration_number.label_tag }}
+                {{ form.registration_number }}
+                {% if form.registration_number.errors %}
+                    <ul class="errorlist">{% for error in form.registration_number.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field">
+                {{ form.phermc_number.label_tag }}
+                {{ form.phermc_number }}
+                {% if form.phermc_number.errors %}
+                    <ul class="errorlist">{% for error in form.phermc_number.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field">
+                {{ form.cac_number.label_tag }}
+                {{ form.cac_number }}
+                {% if form.cac_number.errors %}
+                    <ul class="errorlist">{% for error in form.cac_number.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field full-width">
+                {{ form.address.label_tag }}
+                {{ form.address }}
+                {% if form.address.errors %}
+                    <ul class="errorlist">{% for error in form.address.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field">
+                {{ form.admin_email.label_tag }}
+                {{ form.admin_email }}
+                {% if form.admin_email.errors %}
+                    <ul class="errorlist">{% for error in form.admin_email.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field">
+                {{ form.admin_password.label_tag }}
+                {{ form.admin_password }}
+                {% if form.admin_password.errors %}
+                    <ul class="errorlist">{% for error in form.admin_password.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field full-width">
+                {{ form.admin_full_name.label_tag }}
+                {{ form.admin_full_name }}
+                {% if form.admin_full_name.errors %}
+                    <ul class="errorlist">{% for error in form.admin_full_name.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+
+            <div class="field full-width">
+                {{ form.admin_phone_number.label_tag }}
+                {{ form.admin_phone_number }}
+                {% if form.admin_phone_number.errors %}
+                    <ul class="errorlist">{% for error in form.admin_phone_number.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="inline-links">
+            <button class="btn" type="submit">Create hospital account</button>
+            <a class="link-button" href="/admin/login/">Back to admin login</a>
+        </div>
+    </form>
+{% endblock %}

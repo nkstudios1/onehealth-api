@@ -1,6 +1,7 @@
 from datetime import date
 
 from django.contrib.admin.sites import AdminSite
+from django.contrib.auth import authenticate
 from django.test import RequestFactory, TestCase
 
 from access.models import AccessRequest
@@ -168,3 +169,18 @@ class AdminRolePermissionsTests(TestCase):
         visit_admin = VisitAdmin(Visit, self.site)
         self.assertEqual(visit_admin.get_queryset(request).count(), 1)
         self.assertEqual(visit_admin.get_queryset(request).first(), self.visit)
+
+
+class UniversalAdminLoginTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="universal@demo.test",
+            password="StrongPass123!",
+            phone_number="+2348000000000",
+            user_type=User.UserType.PATIENT,
+            is_staff=True,
+        )
+
+    def test_admin_authentication_accepts_email_or_phone_number(self):
+        self.assertIsNotNone(authenticate(username=self.user.email, password="StrongPass123!"))
+        self.assertIsNotNone(authenticate(username=self.user.phone_number, password="StrongPass123!"))

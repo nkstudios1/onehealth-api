@@ -24,6 +24,8 @@ from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.password_validation import validate_password
+from django.contrib import messages
+from django.shortcuts import get_object_or_404, redirect, render
 from drf_spectacular.utils import OpenApiExample, extend_schema
 from rest_framework import permissions, status, throttling
 from rest_framework.response import Response
@@ -56,9 +58,44 @@ from .serializers import (
 )
 from django.conf import settings
 from django.contrib.auth import authenticate
-from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
+
+from .forms import HospitalRegistrationForm, HospitalStaffRegistrationForm, PatientRegistrationForm
+
+# ---------------------------------------------------------------------------
+# ADMIN-FRIENDLY PUBLIC REGISTRATION PAGES
+# ---------------------------------------------------------------------------
+
+def patient_registration_page(request):
+    """Public HTML patient registration page styled to match Django admin."""
+    form = PatientRegistrationForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Patient account created successfully. You can now log in from the admin login page.")
+        return redirect("/admin/login/")
+    return render(request, "admin/registration/patient.html", {"form": form})
+
+
+def hospital_registration_page(request):
+    """Public HTML hospital registration page styled to match Django admin."""
+    form = HospitalRegistrationForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Hospital account created successfully. The new hospital is pending verification.")
+        return redirect("/admin/login/")
+    return render(request, "admin/registration/hospital.html", {"form": form})
+
+
+def staff_registration_page(request):
+    """Public HTML staff registration page styled to match Django admin."""
+    form = HospitalStaffRegistrationForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Hospital staff account created successfully. You can now log in from the admin login page.")
+        return redirect("/admin/login/")
+    return render(request, "admin/registration/staff.html", {"form": form})
+
 
 # ---------------------------------------------------------------------------
 # THROTTLES

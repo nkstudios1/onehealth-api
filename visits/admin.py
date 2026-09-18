@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Q
 from django.utils import timezone
-
+from import_export.admin import ImportExportModelAdmin
 from users.admin import RoleAwareModelAdmin, hospital_for_user
 from users.models import Hospital, HospitalStaffProfile, PatientProfile, User
 
@@ -18,7 +18,7 @@ def current_staff(user):
 
 
 @admin.register(Visit)
-class VisitAdmin(RoleAwareModelAdmin):
+class VisitAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
     list_display = ("id", "patient", "hospital", "status", "admitted_at", "checked_out_at", "created_by_staff")
     list_filter = ("status", "hospital")
     search_fields = ("id", "patient__full_name", "hospital__name", "created_by_staff__full_name")
@@ -137,7 +137,7 @@ class VisitAdmin(RoleAwareModelAdmin):
 
 
 @admin.register(Vital)
-class VitalAdmin(RoleAwareModelAdmin):
+class VitalAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
     list_display = ("id", "visit", "recorded_by_staff", "recorded_at", "heart_rate", "oxygen_saturation")
     list_filter = ("recorded_by_staff__hospital",)
     search_fields = ("id", "visit__patient__full_name", "recorded_by_staff__full_name")
@@ -237,7 +237,7 @@ class VitalAdmin(RoleAwareModelAdmin):
 
 
 @admin.register(Medication)
-class MedicationAdmin(RoleAwareModelAdmin):
+class MedicationAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
     list_display = ("id", "patient", "medication", "dose", "frequency", "status", "prescribed_by_staff", "created_at")
     list_filter = ("status", "prescribed_by_staff__hospital")
     search_fields = ("id", "patient__full_name", "medication", "reason")

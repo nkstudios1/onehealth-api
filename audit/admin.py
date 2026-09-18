@@ -4,7 +4,7 @@ from users.admin import RoleAwareModelAdmin
 from users.models import User
 
 from .models import AuditLog
-
+from import_export.admin import ImportExportModelAdmin
 
 def is_platform_admin(user):
     return bool(user and user.is_active and (user.is_superuser or user.user_type == User.UserType.PLATFORM_ADMIN))
@@ -15,7 +15,7 @@ def current_staff(user):
 
 
 @admin.register(AuditLog)
-class AuditLogAdmin(RoleAwareModelAdmin):
+class AuditLogAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
     list_display = ["created_at", "action", "actor", "hospital", "patient", "target_type", "target_id"]
     list_filter = ["action", "hospital", "created_at"]
     search_fields = ["action", "target_type", "target_id", "actor__email"]
