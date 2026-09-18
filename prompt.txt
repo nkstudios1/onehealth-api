@@ -1,0 +1,12 @@
+One more thing, I need to make sure that Cards is displayed in the patient dashboard, both the table 
+and the model itself. The idea is that each card is meant to be a record and a qr code created from that record that contais.
+
+In patient dashboard, I need you to create a seprate page where a qr code is going to be generated for this user
+and it will contain link: http://127.0.0.1:8000/admin/access/accessrequest/add/?patient_id=wrgg-svsvc...
+
+This means that when this qr code is scanned by a staff, it will take them to the page wheere they can request access and since
+the patient id is in query params, it should use that to fiter and select the correct patient by
+id so that staff does not have to manuallu search
+
+so yu are tweaking the add request detail page and you are creating a seperae
+page wherre this qr code is going to be created and displayed and only patients can see this page
