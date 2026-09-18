@@ -6,7 +6,7 @@ def is_correct_format(date_string):
     try:
         datetime.strptime(date_string, '%Y-%m-%d')
         return True
-    except ValueError:
+    except (TypeError, ValueError):
         return False
 
 
@@ -21,4 +21,4 @@ def is_valid_email(email):
     
     # Regular expression for a valid email
     pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
-    return bool(re.match(pattern, email))
+    return bool(re.match(pattern, email))

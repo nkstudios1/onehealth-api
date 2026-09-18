@@ -22,12 +22,18 @@ class PatientRegistrationSerializer(serializers.Serializer):
         write_only=True,
         help_text="At least 10 characters; must pass Django's configured password validators.",
     )
-    phone_number = serializers.CharField(required=False, allow_blank=True)
+    phone_number = serializers.CharField(required=True, allow_blank=False)
 
     full_name = serializers.CharField(max_length=255)
     date_of_birth = serializers.DateField(help_text="Format: YYYY-MM-DD.")
     gender = serializers.CharField(required=False, allow_blank=True)
     blood_type = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_phone_number(self, value):
+        value = value.strip()
+        if User.objects.filter(phone_number=value).exists():
+            raise serializers.ValidationError("An account with this phone number already exists.")
+        return value
 
     def validate_email(self, value):
         if User.objects.filter(email__iexact=value).exists():
@@ -107,9 +113,24 @@ class HospitalRegistrationSerializer(serializers.Serializer):
     admin_password = serializers.CharField(write_only=True)
     admin_full_name = serializers.CharField(max_length=255)
 
+    def validate_hospital_name(self, value):
+        if Hospital.objects.filter(name=value).exists():
+            raise serializers.ValidationError("A hospital with this name already exists.")
+        return value
+
     def validate_registration_number(self, value):
         if Hospital.objects.filter(registration_number=value).exists():
             raise serializers.ValidationError("A hospital with this registration number already exists.")
+        return value
+
+    def validate_phermc_number(self, value):
+        if value and Hospital.objects.filter(phermc_number=value).exists():
+            raise serializers.ValidationError("A hospital with this PHERMC number already exists.")
+        return value
+
+    def validate_cac_number(self, value):
+        if value and Hospital.objects.filter(cac_number=value).exists():
+            raise serializers.ValidationError("A hospital with this CAC number already exists.")
         return value
 
     def validate_admin_email(self, value):
@@ -214,8 +235,9 @@ class HospitalSerializer(serializers.ModelSerializer):
     class Meta:
         model = Hospital
         fields = [
-            'id', 'name', 'registration_number', 'phermc_number', 
-            'cac_number', 'address', 'verification_status', 'created_at'
+            'id', 'name', 'registration_number', 'phermc_number',
+            'cac_number', 'address', 'latitude', 'longitude',
+            'verification_status', 'verified_at', 'created_at'
         ]
 
 # ---------------------------------------------------------------------------
@@ -322,3 +344,29 @@ class ChangePasswordSerializer(serializers.Serializer):
         user.must_change_password = False
         user.save(update_fields=["password", "must_change_password"])
         return user
+
+
+# ---------------------------------------------------------------------------
+# HOSPITAL STAFF MANAGEMENT / HOSPITAL VERIFICATION
+# ---------------------------------------------------------------------------
+
+class HospitalStaffListSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(source="user.email", read_only=True)
+    is_active = serializers.BooleanField(source="user.is_active", read_only=True)
+    must_change_password = serializers.BooleanField(source="user.must_change_password", read_only=True)
+
+    class Meta:
+        model = HospitalStaffProfile
+        fields = [
+            "id", "email", "full_name", "role", "professional_license_number",
+            "is_active", "must_change_password", "hospital", "created_at",
+        ]
+        read_only_fields = fields
+
+
+class HospitalVerificationSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=[
+        Hospital.VerificationStatus.VERIFIED,
+        Hospital.VerificationStatus.REJECTED,
+        Hospital.VerificationStatus.SUSPENDED,
+    ])

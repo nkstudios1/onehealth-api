@@ -34,7 +34,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     # matters a lot for a medical records system.
 
     email = models.EmailField(unique=True, db_index=True)
-    phone_number = models.CharField(max_length=20, blank=True)
+    phone_number = models.CharField(max_length=20, unique=True)
 
     user_type = models.CharField(max_length=20, choices=UserType.choices)
 
