@@ -155,6 +155,27 @@ class AccessRequestAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
                 form.base_fields["status"].disabled = True
         return form
 
+    def _ensure_access_grant_for_approved_request(self, access_request):
+        if access_request is None or access_request.status != AccessRequest.Status.APPROVED:
+            return
+
+        grant, created = AccessGrant.objects.get_or_create(
+            access_request=access_request,
+            defaults={
+                "access_level": access_request.access_level,
+                "granted_by": AccessGrant.GrantedBy.PATIENT,
+            },
+        )
+        if grant.access_level != access_request.access_level:
+            grant.access_level = access_request.access_level
+        if grant.revoked_at is not None:
+            grant.revoked_at = None
+            grant.revoked_by = None
+        if not grant.granted_by:
+            grant.granted_by = AccessGrant.GrantedBy.PATIENT
+        grant.granted_at = grant.granted_at or timezone.now()
+        grant.save(update_fields=["access_level", "granted_by", "granted_at", "revoked_at", "revoked_by"])
+
     def save_model(self, request, obj, form, change):
         if not is_platform_admin(request.user) and request.user.user_type in (User.UserType.HOSPITAL_STAFF, User.UserType.HOSPITAL_ADMIN):
             if not obj.pk:
@@ -164,6 +185,8 @@ class AccessRequestAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
                 if current is not None:
                     obj.status = current.status
         super().save_model(request, obj, form, change)
+        if obj.status == AccessRequest.Status.APPROVED:
+            self._ensure_access_grant_for_approved_request(obj)
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -237,6 +260,7 @@ class AccessRequestAdmin(ImportExportModelAdmin, RoleAwareModelAdmin):
             item.status = AccessRequest.Status.APPROVED
             item.responded_at = timezone.now()
             item.save(update_fields=["status", "responded_at"])
+            self._ensure_access_grant_for_approved_request(item)
         self.message_user(request, f"{queryset.count()} request(s) approved.")
 
     @admin.action(description="Deny selected request(s)")
