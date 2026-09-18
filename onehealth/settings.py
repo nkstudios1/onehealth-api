@@ -339,6 +339,7 @@ JAZZMIN_SETTINGS = {
     "copyright": "OneHealth",
 
     "show_ui_builder": False,
+    "navigation_expanded": True,
 
     "default_icon_parents": "fas fa-folder",
     "default_icon_children": "fas fa-circle",

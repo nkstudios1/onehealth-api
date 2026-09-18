@@ -276,36 +276,43 @@
                                     <p>{% trans 'Dashboard' %}</p>
                                 </a>
                             </li>
-                            {% for item in side_menu_list %}
-                                {% if item.has_children %}
-                                    <li class="nav-item{% if item.active %} menu-open{% endif %}">
-                                        <a href="#" class="nav-link{% if item.active %} active{% endif %}">
-                                            <i class="nav-icon {{ item.icon }}"></i>
-                                            <p>
-                                                {{ item.name }}
-                                                <i class="right fas fa-angle-left"></i>
-                                            </p>
+                            {% if jazzmin_settings.navigation_expanded %}
+                                {% for app in side_menu_list %}
+                                    <li class="nav-header">{{ app.name }}</li>
+                                    {% for model in app.models %}
+                                        <li class="nav-item">
+                                            {% if model.url %}
+                                            <a href="{{ model.url }}" class="nav-link">
+                                                <i class="nav-icon {{ model.icon }}"></i> <p>{{ model.name }}</p>
+                                            </a>
+                                        {% else %}
+                                            <span class="nav-link disabled">
+                                                <i class="nav-icon {{ model.icon }}"></i> <p>{{ model.name }}</p>
+                                            </span>
+                                        {% endif %}
+                                        </li>
+                                    {% endfor %}
+                                {% endfor %}
+                            {% else %}
+                                {% for app in side_menu_list %}
+                                    <li class="nav-item has-treeview">
+                                        <a href="#" class="nav-link">
+                                            <i class="nav-icon {{ app.icon }}"></i>
+                                            <p>{{ app.name|truncatechars:21 }} <i class="nav-arrow fas fa-chevron-right" aria-hidden="true"></i></p>
                                         </a>
                                         <ul class="nav nav-treeview">
-                                            {% for child in item.children %}
+                                            {% for model in app.models %}
                                                 <li class="nav-item">
-                                                    <a href="{{ child.url }}" class="nav-link{% if child.active %} active{% endif %}">
-                                                        <i class="nav-icon {{ child.icon }}"></i>
-                                                        <p>{{ child.name }}</p>
+                                                    <a href="{% if model.url %}{{ model.url }}{% else %}javascript:void(0){% endif %}" class="nav-link">
+                                                        <i class="nav-icon {{ model.icon }}"></i>
+                                                        <p>{{ model.name }}</p>
                                                     </a>
                                                 </li>
                                             {% endfor %}
                                         </ul>
                                     </li>
-                                {% else %}
-                                    <li class="nav-item">
-                                        <a href="{{ item.url }}" class="nav-link{% if item.active %} active{% endif %}">
-                                            <i class="nav-icon {{ item.icon }}"></i>
-                                            <p>{{ item.name }}</p>
-                                        </a>
-                                    </li>
-                                {% endif %}
-                            {% endfor %}
+                                {% endfor %}
+                            {% endif %}
                         </ul>
                     </nav>
                 </div>
@@ -314,12 +321,116 @@
         {% endblock %}
     {% endif %}
 
-    <div class="app-content">
-        {% block content %}{% endblock %}
+    <main class="app-main" {% if is_popup %}style="margin-left:0; padding-top: 20px;"{% endif %}>
+        {% block page_content %}
+            {% if not is_popup %}
+            <div class="app-content-header">
+                <div class="container-fluid">
+                    <div class="row">
+                        <div class="col-sm-6">
+                            <h3 class="mb-0">{% block content_title %}{% endblock %}</h3>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="float-sm-end">{% block breadcrumbs %}{% endblock %}</div>
+                            {% block page_actions %}{% endblock %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="app-content">
+                <div class="container-fluid">
+                    {% block messages %}
+                        {% for message in messages %}
+                            {% if message.tags == 'success' %}
+                                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                    <i class="icon fa fa-check"></i> {{ message|capfirst }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% elif message.tags == 'error' %}
+                                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                    <i class="icon fa fa-ban"></i> {{ message|capfirst }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% elif message.tags == 'warning' %}
+                                <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                                    <i class="icon fa fa-exclamation-triangle"></i> {{ message|capfirst }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% elif message.tags == 'info' %}
+                                <div class="alert alert-info alert-dismissible fade show" role="alert">
+                                    <i class="icon fa fa-info"></i> {{ message|capfirst }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    {% endblock messages %}
+                    <div class="row">
+                        {% block content %} {% endblock %}
+                    </div>
+                </div>
+            </div>
+
+
+        {% endblock %}
+    </main>
+
+{% block footer %}
+    {% if not is_popup %}
+        <footer class="app-footer {{ jazzmin_ui.footer_classes }}">
+            <div class="float-end d-none d-sm-inline">
+                <b>{% trans 'Jazzmin version' %}</b> {% get_jazzmin_version %}
+            </div>
+            {% autoescape off %}
+                <strong>{% trans 'Copyright' %} &copy; {% now 'Y' %} {{ jazzmin_settings.copyright }}.</strong> {% trans 'All rights reserved.' %}
+            {% endautoescape %}
+        </footer>
+        {% if jazzmin_settings.show_ui_builder %}
+            {% include 'jazzmin/includes/ui_builder_panel.html' %}
+        {% endif %}
+    {% endif %}
+{% endblock %}
+
     </div>
 
-    {% block footer %}{% endblock %}
-
+{% if jazzmin_settings.show_ui_builder %}
+<div id="codeBox" class="modal fade" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title">{% trans 'UI Configuration' %}</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>{% trans 'Copy this info your settings file to persist these UI changes' %}</p>
+                <pre><code></code></pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn {{ jazzmin_ui.button_classes.danger }}" data-bs-dismiss="modal">{% trans 'Close' %}</button>
+            </div>
+        </div>
     </div>
+</div>
+{% endif %}
+
+<!-- jQuery -->
+<script src="{% static "admin/js/vendor/jquery/jquery.js" %}"></script>
+<!-- Bootstrap 5 -->
+<script src="{% static "vendor/bootstrap/js/bootstrap.bundle.min.js" %}"></script>
+<!-- AdminLTE App -->
+<script src="{% static "vendor/adminlte/js/adminlte.min.js" %}"></script>
+<!-- Django customisations -->
+<script src="{% static "jazzmin/js/main.js" %}"></script>
+
+{% if jazzmin_settings.custom_js %}
+<script src="{% static jazzmin_settings.custom_js %}"></script>
+{% endif %}
+
+{% if jazzmin_settings.show_ui_builder %}
+<script>
+    window.ui_changes = {{ jazzmin_ui.raw|as_json|safe }};
+</script>
+{% endif %}
 </body>
 </html>
